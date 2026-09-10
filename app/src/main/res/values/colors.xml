@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="lena_primary">#7C4DFF</color>
+    <color name="lena_secondary">#00E5FF</color>
+    <color name="lena_background">#0F0F23</color>
+    <color name="lena_surface">#1A1A2E</color>
+    <color name="lena_card">#2A2A3E</color>
+    <color name="lena_success">#4CAF50</color>
+    <color name="lena_error">#F44336</color>
+    <color name="lena_warning">#FF9800</color>
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+</resources>

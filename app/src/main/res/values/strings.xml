@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Lena</string>
+    <string name="accessibility_description">Lena AI needs accessibility access to control your phone - answer calls, open apps, manage notifications, and perform tasks for you. This permission allows Lena to be your complete phone assistant.</string>
+    <string name="notification_channel_service">Lena Background Service</string>
+    <string name="notification_channel_alert">Lena Alerts</string>
+    <string name="notification_channel_chat">Lena Chat</string>
+    <string name="service_notification_title">Lena AI 🤖</string>
+    <string name="service_notification_listening">Lena sun rahi hai... 🎧</string>
+    <string name="service_notification_processing">Lena soch rahi hai... 💭</string>
+    <string name="service_notification_speaking">Lena bol rahi hai... 🗣️</string>
+</resources>
