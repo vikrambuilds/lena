@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Background Circle -->
+    <path
+        android:fillColor="#7C4DFF"
+        android:pathData="M54,54m-50,0a50,50 0,1 1,100 0a50,50 0,1 1,-100 0" />
+    
+    <!-- Inner AI Robot / Mic Icon -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,34c-4.42,0 -8,3.58 -8,8v12c0,4.42 3.58,8 8,8s8,-3.58 8,-8V42c0,-4.42 -3.58,-8 -8,-8z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M69,48c0,8.28 -6.72,15 -15,15s-15,-6.72 -15,-15H35c0,9.74 7.37,17.75 16.85,18.86V74h4.3v-7.14C65.63,65.75 73,57.74 73,48H69z" />
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M54,74m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0" />
+</vector>
