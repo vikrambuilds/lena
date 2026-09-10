@@ -1,7 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.kapt") // Kapt plugin correctly applied
+    id("org.jetbrains.kotlin.kapt")
 }
 
 android {
@@ -22,7 +22,7 @@ android {
     }
     
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.8" // Match with Kotlin 1.9.22
+        kotlinCompilerExtensionVersion = "1.5.8"
     }
     
     compileOptions {
@@ -42,8 +42,10 @@ android {
 }
 
 dependencies {
-    // Core Android & Lifecycle
+    // Core Android & Appcompat
     implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.activity:activity-compose:1.8.2")
     implementation("androidx.lifecycle:lifecycle-service:2.7.0")
@@ -64,7 +66,7 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     
-    // Room Database (with correct Kapt configuration)
+    // Room Database
     val roomVersion = "2.6.1"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
