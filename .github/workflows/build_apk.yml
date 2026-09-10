@@ -18,19 +18,23 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v3
-
-    - name: Grant execute permission for gradlew
+    # Auto-generate Gradle wrapper inside CI if somehow missing in git
+    - name: Ensure Gradle Wrapper
       run: |
         if [ ! -f "gradlew" ]; then
-          gradle wrapper
+          gradle wrapper --gradle-version 8.5
         fi
         chmod +x gradlew
 
-    - name: Build Debug APK
-      run: ./gradlew assembleDebug --stacktrace
+    # Gradle caching to make builds extremely fast
+    - name: Setup Gradle Cache
+      uses: gradle/actions/setup-gradle@v3
 
+    # Build Debug APK using wrapper (takes Gradle 8.5)
+    - name: Build Debug APK
+      run: ./gradlew assembleDebug --stacktrace --warning-mode all
+
+    # Upload APK as GitHub artifact
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
