@@ -4,8 +4,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,8 +20,8 @@ fun HomeScreen(
     isRunning: Boolean,
     messageCount: Int,
     fileSize: String,
-    memoryCount: Int = 0,
     dailySummary: String,
+    memoryCount: Int = 0,
     onToggle: () -> Unit,
     onExport: () -> Unit,
     onShare: () -> Unit,
@@ -124,7 +122,7 @@ fun HomeScreen(
             Triple("⏰", "Alarm", "\"7 baje alarm lagao\" | \"Yaad dila dena\""),
             Triple("ℹ️", "Info", "\"Battery kitni hai?\" | \"Time kya hua?\""),
             Triple("🔦", "Torch", "\"Torch jala do\" | \"Light band karo\""),
-            Triple("🗣️", "Chat", "\"Lena kaisi hai?\" | \"DSA samjha do\""),
+            Triple("🗣️", "Chat", "\"Lena kaisi hai?\" | \"DSA samjha do\"")
         )
 
         commandGroups.forEach { (icon, title, example) ->

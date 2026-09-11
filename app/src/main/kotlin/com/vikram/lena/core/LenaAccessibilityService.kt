@@ -23,17 +23,14 @@ class LenaAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // We can monitor app changes, notifications etc here
         event?.let {
             when (it.eventType) {
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
-                    // Track which app is in foreground
                     val packageName = it.packageName?.toString() ?: ""
                     val className = it.className?.toString() ?: ""
                     onAppChanged(packageName, className)
                 }
                 AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED -> {
-                    // Notification received
                     val text = it.text?.joinToString(" ") ?: ""
                     onNotificationReceived(it.packageName?.toString() ?: "", text)
                 }
@@ -53,27 +50,34 @@ class LenaAccessibilityService : AccessibilityService() {
 
     // ========== PHONE CONTROL METHODS ==========
 
-    /** Answer incoming call using accessibility */
+    /** Answer incoming call by UI node search or Swipe Gesture */
     fun answerCall(): Boolean {
         return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                performGlobalAction(GLOBAL_ACTION_ANSWER_CALL)
-            } else {
-                // Swipe up gesture to answer
-                performSwipeUp()
-                true
+            val rootNode = rootInActiveWindow
+            if (rootNode != null) {
+                val answered = findAndClickNode(rootNode, "answer") || 
+                               findAndClickNode(rootNode, "accept") ||
+                               findAndClickNode(rootNode, "receive")
+                if (answered) return true
             }
+            // Fallback gesture
+            performSwipeUp()
+            true
         } catch (e: Exception) {
             e.printStackTrace()
             false
         }
     }
 
-    /** Reject/End call */
+    /** Reject/End call by UI node click */
     fun endCall(): Boolean {
         return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                performGlobalAction(GLOBAL_ACTION_END_CALL)
+            val rootNode = rootInActiveWindow
+            if (rootNode != null) {
+                findAndClickNode(rootNode, "decline") || 
+                findAndClickNode(rootNode, "reject") ||
+                findAndClickNode(rootNode, "end") ||
+                findAndClickNode(rootNode, "dismiss")
             } else {
                 false
             }
@@ -167,22 +171,6 @@ class LenaAccessibilityService : AccessibilityService() {
         return dispatchGesture(gesture, null, null)
     }
 
-    /** Perform tap at coordinates */
-    fun performTap(x: Float, y: Float): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
-
-        val path = Path()
-        path.moveTo(x, y)
-
-        val gesture = GestureDescription.Builder()
-            .addStroke(GestureDescription.StrokeDescription(path, 0, 50))
-            .build()
-
-        return dispatchGesture(gesture, null, null)
-    }
-
-    // ========== HELPER METHODS ==========
-
     private fun performSwipeUp(): Boolean {
         val displayMetrics = resources.displayMetrics
         val centerX = displayMetrics.widthPixels / 2f
@@ -192,7 +180,6 @@ class LenaAccessibilityService : AccessibilityService() {
     }
 
     private fun findAndClickNode(node: AccessibilityNodeInfo, text: String): Boolean {
-        // Check current node
         val nodeText = node.text?.toString()?.lowercase() ?: ""
         val nodeDesc = node.contentDescription?.toString()?.lowercase() ?: ""
 
@@ -201,7 +188,6 @@ class LenaAccessibilityService : AccessibilityService() {
             return node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
         }
 
-        // Check children
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
             if (findAndClickNode(child, text)) return true
@@ -210,34 +196,7 @@ class LenaAccessibilityService : AccessibilityService() {
         return false
     }
 
-    private fun onAppChanged(packageName: String, className: String) {
-        // Can be used for tracking or context awareness
-    }
+    private fun onAppChanged(packageName: String, className: String) {}
 
-    private fun onNotificationReceived(packageName: String, text: String) {
-        // Can be used for reading notifications aloud
-    }
-
-    /** Scroll down in current view */
-    fun scrollDown(): Boolean {
-        val rootNode = rootInActiveWindow ?: return false
-        return findScrollableAndScroll(rootNode, AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
-    }
-
-    /** Scroll up in current view */
-    fun scrollUp(): Boolean {
-        val rootNode = rootInActiveWindow ?: return false
-        return findScrollableAndScroll(rootNode, AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
-    }
-
-    private fun findScrollableAndScroll(node: AccessibilityNodeInfo, action: Int): Boolean {
-        if (node.isScrollable) {
-            return node.performAction(action)
-        }
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            if (findScrollableAndScroll(child, action)) return true
-        }
-        return false
-    }
+    private fun onNotificationReceived(packageName: String, text: String) {}
 }

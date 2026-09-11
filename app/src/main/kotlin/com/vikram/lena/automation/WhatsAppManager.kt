@@ -8,8 +8,8 @@ class WhatsAppManager(private val context: Context) {
 
     private val contactManager = ContactManager(context)
 
-    /** Send WhatsApp message to contact */
-    fun sendMessage(contactName: String, message: String): String {
+    /** Send WhatsApp message */
+    fun sendWhatsAppMessage(contactName: String, message: String): String {
         val number = contactManager.findNumber(contactName)
 
         return if (number != null) {
@@ -33,7 +33,6 @@ class WhatsAppManager(private val context: Context) {
                 context.startActivity(intent)
                 "WhatsApp pe $contactName ko message bhej rahi hu! 💬"
             } catch (e: Exception) {
-                // Try without package restriction
                 try {
                     val cleanNumber = number.replace("[^\\d+]".toRegex(), "")
                     val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -44,7 +43,7 @@ class WhatsAppManager(private val context: Context) {
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK
                     }
                     context.startActivity(intent)
-                    "WhatsApp khol rahi hu $contactName ke liye! Send button daba dena! 💬"
+                    "WhatsApp khol rahi hu $contactName ke liye! 💬"
                 } catch (e2: Exception) {
                     "WhatsApp nahi khul raha yaar! Check kar installed hai ya nahi."
                 }
@@ -52,6 +51,11 @@ class WhatsAppManager(private val context: Context) {
         } else {
             "Yaar '$contactName' ka number nahi mila contacts mein!"
         }
+    }
+
+    /** Alias for backward compatibility */
+    fun sendMessage(contactName: String, message: String): String {
+        return sendWhatsAppMessage(contactName, message)
     }
 
     /** Open WhatsApp */
@@ -68,31 +72,6 @@ class WhatsAppManager(private val context: Context) {
             }
         } catch (e: Exception) {
             "WhatsApp kholne mein problem aa gayi!"
-        }
-    }
-
-    /** Make WhatsApp voice call */
-    fun makeWhatsAppCall(contactName: String): String {
-        val number = contactManager.findNumber(contactName)
-
-        return if (number != null) {
-            try {
-                val cleanNumber = number.replace("[^\\d+]".toRegex(), "")
-                val intent = Intent(Intent.ACTION_VIEW).apply {
-                    data = Uri.parse(
-                        "https://api.whatsapp.com/send?phone=$cleanNumber"
-                    )
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    setPackage("com.whatsapp")
-                }
-                context.startActivity(intent)
-                "WhatsApp pe $contactName ka chat khol rahi hu. " +
-                    "Wahan se call kar lena yaar! 📞"
-            } catch (e: Exception) {
-                "WhatsApp call nahi laga payi yaar!"
-            }
-        } else {
-            "Yaar '$contactName' ka number nahi mila!"
         }
     }
 }
