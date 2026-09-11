@@ -3,8 +3,6 @@ package com.vikram.lena.voice
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
-import android.media.audiofx.AcousticEchoCanceler
-import android.media.audiofx.NoiseSuppressor
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -29,7 +27,6 @@ class VoiceManager(private val context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var audioManager: AudioManager? = null
     
-    // Mute helper volumes
     private var originalSystemVolume = 0
     private var originalNotificationVolume = 0
     
@@ -70,16 +67,16 @@ class VoiceManager(private val context: Context) {
             tts?.setLanguage(Locale.US)
         }
         
-        // Sweet sweet high-pitch female voice profile
-        tts?.setPitch(1.23f)      // Optimized sweet female pitch
-        tts?.setSpeechRate(0.92f)  // Calm and sweet speech pacing
+        // Sweet and clear Indian female voice pitch & rate tuning
+        tts?.setPitch(1.20f)
+        tts?.setSpeechRate(0.92f)
     }
     
     private fun setupTtsListener() {
         tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {}
             override fun onDone(utteranceId: String?) {
-                if (utteranceId?.startsWith("last_") == true) {
+                if (utteranceId?.startsWith("last_chunk_") == true) {
                     mainHandler.post {
                         pendingCallback?.invoke()
                         pendingCallback = null
@@ -96,8 +93,8 @@ class VoiceManager(private val context: Context) {
     }
 
     /**
-     * Sentence Chunking Engine
-     * Cuts the long responses into chunks to prevent early cutoff
+     * Sentence Chunking Engine:
+     * Never truncates long/short text; plays all sentences in guaranteed succession
      */
     fun speak(text: String, onComplete: (() -> Unit)? = null) {
         if (!isTtsReady) {
@@ -106,24 +103,25 @@ class VoiceManager(private val context: Context) {
             return
         }
         
-        stopSpeaking() // Ensure previous speak cycle completely stops
+        stopSpeaking()
         pendingCallback = onComplete
 
-        // Clean and chunk text
         val cleanedText = cleanTextForSpeech(text)
         
-        // Regex to split by punctuation keeping context pauses natural
-        val sentences = cleanedText.split(Regex("(?<=[.!?।।])\\s+"))
+        // Split by sentence terminators (., !, ?, ।, \n)
+        val rawChunks = cleanedText.split(Regex("(?<=[.!?।।\\n])\\s+"))
+            .map { it.trim() }
             .filter { it.isNotBlank() }
 
-        if (sentences.isEmpty()) {
+        if (rawChunks.isEmpty()) {
             onComplete?.invoke()
             return
         }
 
-        for (i in sentences.indices) {
-            val sentence = sentences[i]
-            val utteranceId = if (i == sentences.size - 1) "last_${System.currentTimeMillis()}" else "chunk_$i"
+        for (i in rawChunks.indices) {
+            val chunk = rawChunks[i]
+            val isLast = (i == rawChunks.size - 1)
+            val utteranceId = if (isLast) "last_chunk_${System.currentTimeMillis()}" else "chunk_$i"
             val queueMode = if (i == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
             
             val params = Bundle().apply {
@@ -131,7 +129,7 @@ class VoiceManager(private val context: Context) {
                 putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC)
             }
             
-            tts?.speak(sentence, queueMode, params, utteranceId)
+            tts?.speak(chunk, queueMode, params, utteranceId)
         }
     }
 
@@ -141,7 +139,7 @@ class VoiceManager(private val context: Context) {
 
     fun isSpeaking(): Boolean = tts?.isSpeaking == true
 
-    // ========== NOISE CANCELING & BEEP MUTER ==========
+    // ========== NOISE SUPPRESSION & BEEP MUTER ==========
     private fun muteBeepSounds() {
         try {
             audioManager?.let { am ->
@@ -250,19 +248,19 @@ class VoiceManager(private val context: Context) {
     }
     
     private fun onWakeWordActivated() {
-        stopSpeaking() // Interrupt speaking when Wake Word is detected (Barge-In)
+        stopSpeaking() // Barge-in: immediately stop Lena from speaking when wake word fires
         speechRecognizer?.destroy()
         speechRecognizer = null
         onWakeWordDetected?.invoke()
     }
 
-    // ========== COMMAND LISTENING (Noise Suppression Built-In) ==========
+    // ========== COMMAND LISTENING ==========
     fun startListening() {
         if (isListening) return
         
         mainHandler.post {
             try {
-                stopSpeaking() // Force stop speaking when user starts talking (Barge-In)
+                stopSpeaking() // Barge-in: stop speaking when mic opens for command
                 muteBeepSounds()
                 
                 speechRecognizer?.destroy()
@@ -273,10 +271,8 @@ class VoiceManager(private val context: Context) {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN")
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "hi-IN")
                     putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L)
                     putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1000L)
-                    
-                    // Hardware Noise canceling and Echo Cancellation integrations if supported
                     putExtra("android.speech.extra.DICTATION_MODE", true)
                 }
                 
@@ -289,9 +285,9 @@ class VoiceManager(private val context: Context) {
                     override fun onBeginningOfSpeech() {}
                     
                     override fun onRmsChanged(rmsdB: Float) {
-                        // High noise suppression gate: Ignore room whisper peaks below 1.5 RMS
+                        // High noise gate: filter background chatter
                         val normalized = ((rmsdB + 2f) / 22f).coerceIn(0f, 1f)
-                        if (normalized > 0.15f) {
+                        if (normalized > 0.18f) {
                             onVolumeChanged?.invoke(normalized)
                         } else {
                             onVolumeChanged?.invoke(0f)
@@ -316,7 +312,7 @@ class VoiceManager(private val context: Context) {
                         if (!matches.isNullOrEmpty()) {
                             onSpeechResult?.invoke(matches[0])
                         } else {
-                            onSpeechError?.invoke("Yaar, kuch sunayi nahi diya clear.")
+                            onSpeechError?.invoke("Kuch clear sunayi nahi diya yaar.")
                         }
                     }
                     
@@ -367,10 +363,9 @@ class VoiceManager(private val context: Context) {
     private fun cleanTextForSpeech(text: String): String {
         return text
             .replace(Regex("[\\p{So}\\p{Sk}]"), "") // Remove emojis
-            .replace(Regex("[*#`_~]"), "")           // Remove markdown
-            .replace(Regex("\\n+"), ". ")            // Newlines to pauses
-            .replace(Regex("\\s+"), " ")             // Multiple spaces
-            .replace("।", ".")                       // Convert Purnavirama for engine mapping
+            .replace(Regex("[*#`_~]"), "")           // Remove markdown formatting
+            .replace("।", ".")                       // Convert Purnavirama to standard pause
+            .replace(Regex("\\s+"), " ")             // Normalize spaces
             .trim()
     }
 }
