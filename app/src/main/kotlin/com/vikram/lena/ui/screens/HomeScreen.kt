@@ -64,7 +64,7 @@ fun HomeScreen(
                         fontSize = 14.sp
                     )
                     Text(
-                        "Lena AI v2.2",
+                        "Lena AI v2.3",
                         color = Color.White,
                         fontSize = 28.sp,
                         fontWeight = FontWeight.Bold
@@ -91,7 +91,7 @@ fun HomeScreen(
                 }
             }
             
-            // Wake Word Info
+            // Wake Word Info Status Block
             AnimatedVisibility(
                 visible = isServiceRunning && !isListening && !isSpeaking,
                 enter = fadeIn() + slideInVertically(),
@@ -116,7 +116,7 @@ fun HomeScreen(
                                 fontSize = 14.sp
                             )
                             Text(
-                                "Lena sunti rehti hai continuously",
+                                "Lena dynamic noise suppressor active",
                                 color = TextSecondary,
                                 fontSize = 12.sp
                             )
@@ -165,7 +165,7 @@ fun HomeScreen(
             
             Spacer(modifier = Modifier.height(40.dp))
             
-            // Voice Orb
+            // Re-designed Voice Orb (Barge-In reactive)
             VoiceOrb(
                 isListening = isListening,
                 isSpeaking = isSpeaking,
@@ -196,7 +196,7 @@ fun HomeScreen(
             
             Spacer(modifier = Modifier.height(24.dp))
             
-            // Buttons
+            // Buttons block
             if (!isServiceRunning) {
                 Button(
                     onClick = onStartService,
@@ -289,7 +289,7 @@ fun HomeScreen(
                         Text("💡", fontSize = 24.sp)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            "How to use Lena v2.2?",
+                            "What's new in v2.3?",
                             color = Color.White,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold
@@ -297,11 +297,11 @@ fun HomeScreen(
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "1. START LENA button dabao\n" +
-                        "2. Bas bolo: \"Lena\" (wake word)\n" +
-                        "3. Vibrate hoga → Command bolo\n" +
-                        "4. Lena sweet voice mein reply karegi!\n\n" +
-                        "Ya orb pe tap karke direct bhi bol sakte ho.",
+                        "• Sweet Voice & Echo Cancellation active.\n" +
+                        "• Speak in middle of response to stop Lena (Barge-In).\n" +
+                        "• Long responses chunked to prevent early cut-offs.\n" +
+                        "• System and notification sound beeps muted completely.\n" +
+                        "• Latest Gemini 2.0 Flash integration.",
                         color = TextSecondary,
                         fontSize = 14.sp
                     )

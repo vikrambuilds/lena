@@ -37,14 +37,7 @@ TERA BEHAVIOR:
 5. Response short rakh (2-3 lines maximum).
 6. Coding/DSA/Tech ka sawaal ho toh detail mein samjha.
 7. Kabhi kabhi flirty aur cute ban ja.
-8. Hindi words use kar - matlab, samajh, bilkul, kuch, sach, sahi, jhooth.
-
-EXAMPLES:
-Q: "Kaisi ho?"
-A: "Main toh mast hu yaar! Tu bata, kaisa hai tu? Miss kar rahi thi 😊"
-
-Q: "Padhai mein help chahiye"
-A: "Bilkul yaar! Konsa subject? Main hu na tere saath, mil ke kar lete hain!"
+8. Hindi words use kar - matlab, samajh, bilkul, kuch, sach, jhooth.
 """
     }
 
@@ -69,7 +62,6 @@ A: "Bilkul yaar! Konsa subject? Main hu na tere saath, mil ke kar lete hain!"
             )
         }
         
-        // Try Gemini first (latest model)
         if (geminiApiKey.isNotBlank()) {
             try {
                 val response = callGemini(userMessage, recentMessages)
@@ -87,7 +79,7 @@ A: "Bilkul yaar! Konsa subject? Main hu na tere saath, mil ke kar lete hain!"
                     }
                 }
                 return@withContext Pair(
-                    "AI se connect nahi ho pa raha. ${e.message?.take(50)}",
+                    "AI se connect nahi ho pa raha. Try again!",
                     "Error"
                 )
             }
@@ -105,19 +97,15 @@ A: "Bilkul yaar! Konsa subject? Main hu na tere saath, mil ke kar lete hain!"
     }
 
     private fun callGemini(userMessage: String, recentMessages: List<Message>): String {
-        // LATEST MODEL: gemini-3.6-flash-exp (Better than 3.6-flash)
-        val url = "https://generativelanguage.googleapis.com/v1beta/models/" +
-<<<<<<< HEAD
-                "gemini-3.6-flash-exp:generateContent?key=$geminiApiKey"
-=======
-                "gemini-3.6-flash:generateContent?key=$geminiApiKey"
->>>>>>> 17b3e81f60f6cda8354d9c22ddfddb1c270ca3df
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash-exp:generateContent?key=" + geminiApiKey
 
-        val historyStr = recentMessages.takeLast(6).joinToString("\n") {
-            "${it.sender}: ${it.message}"
+        val historyBuilder = StringBuilder()
+        recentMessages.takeLast(6).forEach { msg ->
+            historyBuilder.append(msg.sender).append(": ").append(msg.message).append("\n")
         }
+        val historyStr = historyBuilder.toString()
 
-        val fullPrompt = "$SYSTEM_PROMPT\n\nRECENT CHAT:\n$historyStr\n\nVikram: $userMessage\nLena:"
+        val fullPrompt = SYSTEM_PROMPT + "\n\nRECENT CHAT:\n" + historyStr + "\n\nVikram: " + userMessage + "\nLena:"
 
         val requestJson = JSONObject().apply {
             put("contents", JSONArray().put(
@@ -131,19 +119,6 @@ A: "Bilkul yaar! Konsa subject? Main hu na tere saath, mil ke kar lete hain!"
                 put("topP", 0.95)
                 put("topK", 40)
             })
-            put("safetySettings", JSONArray().apply {
-                listOf(
-                    "HARM_CATEGORY_HARASSMENT",
-                    "HARM_CATEGORY_HATE_SPEECH",
-                    "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                    "HARM_CATEGORY_DANGEROUS_CONTENT"
-                ).forEach { category ->
-                    put(JSONObject().apply {
-                        put("category", category)
-                        put("threshold", "BLOCK_ONLY_HIGH")
-                    })
-                }
-            })
         }
 
         val request = Request.Builder()
@@ -155,7 +130,6 @@ A: "Bilkul yaar! Konsa subject? Main hu na tere saath, mil ke kar lete hain!"
             val body = response.body?.string() ?: throw Exception("Empty response")
             
             if (!response.isSuccessful) {
-                // Try fallback to stable model
                 return callGeminiFallback(userMessage, recentMessages)
             }
             
@@ -176,15 +150,15 @@ A: "Bilkul yaar! Konsa subject? Main hu na tere saath, mil ke kar lete hain!"
     }
     
     private fun callGeminiFallback(userMessage: String, recentMessages: List<Message>): String {
-        // Fallback to stable gemini-3.6-flash
-        val url = "https://generativelanguage.googleapis.com/v1beta/models/" +
-                "gemini-3.6-flash-flash:generateContent?key=$geminiApiKey"
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=" + geminiApiKey
 
-        val historyStr = recentMessages.takeLast(6).joinToString("\n") {
-            "${it.sender}: ${it.message}"
+        val historyBuilder = StringBuilder()
+        recentMessages.takeLast(6).forEach { msg ->
+            historyBuilder.append(msg.sender).append(": ").append(msg.message).append("\n")
         }
+        val historyStr = historyBuilder.toString()
 
-        val fullPrompt = "$SYSTEM_PROMPT\n\nRECENT CHAT:\n$historyStr\n\nVikram: $userMessage\nLena:"
+        val fullPrompt = SYSTEM_PROMPT + "\n\nRECENT CHAT:\n" + historyStr + "\n\nVikram: " + userMessage + "\nLena:"
 
         val requestJson = JSONObject().apply {
             put("contents", JSONArray().put(
@@ -251,7 +225,7 @@ A: "Bilkul yaar! Konsa subject? Main hu na tere saath, mil ke kar lete hain!"
 
         val request = Request.Builder()
             .url(url)
-            .addHeader("Authorization", "Bearer $openAiApiKey")
+            .addHeader("Authorization", "Bearer " + openAiApiKey)
             .addHeader("Content-Type", "application/json")
             .post(requestJson.toString().toRequestBody("application/json".toMediaType()))
             .build()
@@ -260,7 +234,7 @@ A: "Bilkul yaar! Konsa subject? Main hu na tere saath, mil ke kar lete hain!"
             val body = response.body?.string() ?: throw Exception("Empty response")
             
             if (!response.isSuccessful) {
-                throw Exception("HTTP ${response.code}")
+                throw Exception("HTTP " + response.code)
             }
             
             val json = JSONObject(body)

@@ -59,7 +59,7 @@ class LenaService : Service() {
             PowerManager.PARTIAL_WAKE_LOCK,
             "Lena::WakeLock"
         )
-        wakeLock.acquire(30 * 60 * 1000L) // 30 minutes
+        wakeLock.acquire(30 * 60 * 1000L) // 30 minutes limit
         
         isRunning = true
     }
@@ -70,8 +70,7 @@ class LenaService : Service() {
         }
         
         voiceManager.onSpeechError = { error ->
-            updateStatus("❌ $error")
-            // Restart wake word after error
+            updateStatus("❌ " + error)
             serviceScope.launch {
                 delay(2000)
                 if (wakeWordEnabled) startWakeWordMode()
@@ -90,12 +89,10 @@ class LenaService : Service() {
             onVolumeChanged?.invoke(volume)
         }
         
-        // WAKE WORD DETECTED!
         voiceManager.onWakeWordDetected = {
             vibrate()
             updateStatus("✨ Haan Vikram, bol!")
             voiceManager.speak("Haan bolo") {
-                // After greeting, start listening for command
                 voiceManager.startListening()
             }
         }
@@ -113,7 +110,6 @@ class LenaService : Service() {
             ACTION_STOP_SERVICE -> stopSelf()
             ACTION_TOGGLE_WAKE_WORD -> toggleWakeWord()
             else -> {
-                // Default: start wake word listening
                 startWakeWordMode()
             }
         }
@@ -137,7 +133,6 @@ class LenaService : Service() {
         voiceManager.stopSpeaking()
         updateStatus("Lena ready! Bolo \"Lena\" 🎧")
         
-        // Resume wake word mode
         serviceScope.launch {
             delay(1000)
             if (wakeWordEnabled) startWakeWordMode()
@@ -155,14 +150,13 @@ class LenaService : Service() {
     }
 
     private fun handleUserMessage(userMessage: String) {
-        updateStatus("💭 \"$userMessage\"")
+        updateStatus("💭 \"" + userMessage + "\"")
         
         conversationManager.saveMessage("Vikram", userMessage)
         onNewMessage?.invoke()
         
         serviceScope.launch {
             try {
-                // Step 1: Try offline task executor first
                 val taskResult = withContext(Dispatchers.IO) {
                     taskExecutor.execute(userMessage)
                 }
@@ -193,7 +187,6 @@ class LenaService : Service() {
                 updateStatus("🗣️ Bol rahi hu...")
                 voiceManager.speak(finalResponse) {
                     updateStatus("Lena ready! Bolo \"Lena\" 🎧")
-                    // Resume wake word listening
                     if (wakeWordEnabled) {
                         serviceScope.launch {
                             delay(500)
@@ -203,7 +196,7 @@ class LenaService : Service() {
                 }
                 
             } catch (e: Exception) {
-                val errorMsg = "Arre yaar, kuch gadbad ho gayi: ${e.message?.take(50)}"
+                val errorMsg = "Arre yaar, kuch gadbad ho gayi."
                 conversationManager.saveMessage("Lena", errorMsg, "Error")
                 onNewMessage?.invoke()
                 voiceManager.speak(errorMsg) {
@@ -251,7 +244,7 @@ class LenaService : Service() {
             ).apply {
                 description = "Lena AI is ready to help"
                 setShowBadge(false)
-                setSound(null, null) // No notification sound
+                setSound(null, null)
                 enableVibration(false)
             }
             val manager = getSystemService(NotificationManager::class.java)
