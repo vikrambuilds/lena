@@ -100,7 +100,7 @@ TERA BEHAVIOR:
 
     private fun callGemini(userMessage: String, recentMessages: List<Message>): String {
         val url = "https://generativelanguage.googleapis.com/v1beta/models/" +
-                "gemini-2.0-flash:generateContent?key=$geminiApiKey"
+                "gemini-3.6-flash:generateContent?key=$geminiApiKey"
 
         val historyStr = recentMessages.takeLast(6).joinToString("\n") {
             "${it.sender}: ${it.message}"
