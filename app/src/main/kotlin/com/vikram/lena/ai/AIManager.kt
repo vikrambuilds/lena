@@ -107,7 +107,11 @@ A: "Bilkul yaar! Konsa subject? Main hu na tere saath, mil ke kar lete hain!"
     private fun callGemini(userMessage: String, recentMessages: List<Message>): String {
         // LATEST MODEL: gemini-3.6-flash-exp (Better than 3.6-flash)
         val url = "https://generativelanguage.googleapis.com/v1beta/models/" +
+<<<<<<< HEAD
                 "gemini-3.6-flash-exp:generateContent?key=$geminiApiKey"
+=======
+                "gemini-3.6-flash:generateContent?key=$geminiApiKey"
+>>>>>>> 17b3e81f60f6cda8354d9c22ddfddb1c270ca3df
 
         val historyStr = recentMessages.takeLast(6).joinToString("\n") {
             "${it.sender}: ${it.message}"
