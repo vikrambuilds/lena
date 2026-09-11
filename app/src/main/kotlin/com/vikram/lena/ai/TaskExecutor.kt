@@ -4,9 +4,11 @@ import android.content.Context
 import com.vikram.lena.automation.*
 
 /**
- * Offline Task Executor
- * Bina AI ke bhi ye tasks execute karega
- * Simple keyword matching se
+ * Smart Task Executor v2.2
+ * - Fuzzy keyword matching
+ * - Better contact extraction
+ * - Handles typos and speech recognition errors
+ * - Multi-language support (Hindi + English + Hinglish)
  */
 class TaskExecutor(private val context: Context) {
 
@@ -21,33 +23,33 @@ class TaskExecutor(private val context: Context) {
     private val deviceInfoManager = DeviceInfoManager(context)
 
     data class TaskResult(
-        val handled: Boolean,       // Was this task handled offline?
-        val response: String,       // Response to speak
-        val requiresAI: Boolean = false // Should we also call AI?
+        val handled: Boolean,
+        val response: String,
+        val requiresAI: Boolean = false
     )
 
     fun execute(userMessage: String): TaskResult {
         val msg = userMessage.lowercase().trim()
+        
+        // Remove wake word if present in command
+        var cleanMsg = msg
+        listOf("hey lena", "ok lena", "lena", "leena", "lina", "arre lena", "arey lena").forEach {
+            cleanMsg = cleanMsg.replace(it, "").trim()
+        }
+        if (cleanMsg.isBlank()) cleanMsg = msg
 
         return when {
-            // ========== GREETINGS ==========
-            isGreeting(msg) -> TaskResult(true, getGreetingResponse())
-            
-            // ========== TIME & DATE ==========
-            containsAny(msg, listOf("time", "samay", "kitne baje", "kya time", "waqt")) -> 
-                TaskResult(true, deviceInfoManager.getTimeAndDate())
-            
-            containsAny(msg, listOf("date", "tarikh", "din kya", "aaj kya din")) -> 
-                TaskResult(true, deviceInfoManager.getTimeAndDate())
-            
-            // ========== BATTERY ==========
-            containsAny(msg, listOf("battery", "charge", "kitni battery", "power kitni")) -> 
-                TaskResult(true, deviceInfoManager.getBatteryInfo())
+            // ========== TORCH / FLASHLIGHT ==========
+            hasAny(cleanMsg, listOf("torch", "flashlight", "batti", "light", "flash", "tourch", "torc")) -> {
+                val turnOn = !hasAny(cleanMsg, listOf("off", "band", "bandh", "close", "bujha"))
+                TaskResult(true, systemController.toggleFlashlight(turnOn))
+            }
             
             // ========== CALLS ==========
-            containsAny(msg, listOf("call kar", "call karo", "phone kar", "phone karo", "call laga")) -> {
-                val contact = extractContact(msg, listOf("call kar", "call karo", "phone kar", "phone karo", "call laga", "ko", "ka"))
-                if (contact.isNotBlank()) {
+            hasAny(cleanMsg, listOf("call", "phone", "dial", "ring")) && 
+            !hasAny(cleanMsg, listOf("logs", "history", "list")) -> {
+                val contact = extractContactForCall(cleanMsg)
+                if (contact.isNotBlank() && contact.length > 1) {
                     TaskResult(true, phoneCallManager.makeCall(contact))
                 } else {
                     TaskResult(true, "Kisko call karna hai yaar? Naam bata!")
@@ -55,100 +57,111 @@ class TaskExecutor(private val context: Context) {
             }
             
             // ========== APPS ==========
-            containsAny(msg, listOf("open kar", "khol", "launch", "chalu kar")) && !msg.contains("torch") -> {
-                val appName = extractAppName(msg)
+            hasAny(cleanMsg, listOf("open", "khol", "kholo", "launch", "chalu", "start")) && 
+            !hasAny(cleanMsg, listOf("torch", "flashlight", "wifi", "bluetooth", "app khol karo")) -> {
+                val appName = extractAppName(cleanMsg)
+                if (appName.isNotBlank() && appName.length > 1) {
+                    TaskResult(true, appLauncher.openApp(appName))
+                } else {
+                    TaskResult(true, "Konsi app kholni hai? Naam bata!")
+                }
+            }
+            
+            // Direct app names (without "open" keyword)
+            hasAny(cleanMsg, listOf("youtube", "whatsapp", "instagram", "facebook", "chrome", "gmail")) &&
+            !hasAny(cleanMsg, listOf("message", "bhej", "call")) -> {
+                val appName = extractDirectAppName(cleanMsg)
                 if (appName.isNotBlank()) {
                     TaskResult(true, appLauncher.openApp(appName))
                 } else {
-                    TaskResult(true, "Konsi app kholni hai bata!")
+                    TaskResult(false, "", requiresAI = true)
                 }
             }
             
             // ========== WHATSAPP ==========
-            msg.contains("whatsapp") && containsAny(msg, listOf("bhej", "message", "msg", "text")) -> {
-                val parts = msg.split(" ki ", " that ", " bolo ", " likh ")
-                val contactPart = parts[0]
-                val messagePart = if (parts.size > 1) parts[1] else "Hello"
-                val contact = extractContact(contactPart, listOf("whatsapp", "pe", "par", "ko"))
+            cleanMsg.contains("whatsapp") && hasAny(cleanMsg, listOf("bhej", "message", "msg", "text", "send")) -> {
+                val (contact, message) = extractContactAndMessage(cleanMsg, "whatsapp")
                 if (contact.isNotBlank()) {
-                    TaskResult(true, whatsAppManager.sendWhatsAppMessage(contact, messagePart))
+                    TaskResult(true, whatsAppManager.sendWhatsAppMessage(contact, message.ifBlank { "Hello!" }))
                 } else {
-                    TaskResult(true, "Kisko WhatsApp karna hai bata!")
+                    TaskResult(true, "Kisko WhatsApp bhejna hai?")
                 }
             }
             
-            msg.contains("whatsapp") -> TaskResult(true, whatsAppManager.openWhatsApp())
+            cleanMsg.contains("whatsapp") -> TaskResult(true, whatsAppManager.openWhatsApp())
             
             // ========== SMS ==========
-            containsAny(msg, listOf("sms bhej", "message bhej", "sms kar")) -> {
-                val parts = msg.split(" ki ", " that ", " bolo ", " likh ")
-                val contactPart = parts[0]
-                val messagePart = if (parts.size > 1) parts[1] else "Hello"
-                val contact = extractContact(contactPart, listOf("sms bhej", "message bhej", "sms kar", "ko"))
+            hasAny(cleanMsg, listOf("sms bhej", "message bhej", "sms send", "text send")) -> {
+                val (contact, message) = extractContactAndMessage(cleanMsg, "sms")
                 if (contact.isNotBlank()) {
-                    TaskResult(true, smsManager.sendSMS(contact, messagePart))
+                    TaskResult(true, smsManager.sendSMS(contact, message.ifBlank { "Hello!" }))
                 } else {
-                    TaskResult(true, "Kisko SMS karna hai bata!")
+                    TaskResult(true, "Kisko SMS karna hai?")
                 }
             }
             
-            containsAny(msg, listOf("sms padh", "message padh", "last sms")) -> 
+            hasAny(cleanMsg, listOf("sms padh", "message padh", "last sms", "sms dikha")) -> 
                 TaskResult(true, smsManager.readRecentSMS())
             
-            // ========== FLASHLIGHT ==========
-            containsAny(msg, listOf("torch", "flashlight", "batti", "flash")) -> {
-                val turnOn = containsAny(msg, listOf("on", "jala", "chalu", "start"))
-                TaskResult(true, systemController.toggleFlashlight(turnOn))
-            }
+            // ========== TIME & DATE ==========
+            hasAny(cleanMsg, listOf("time", "samay", "kitne baje", "waqt", "kya baja", "kya baje", "kya time")) -> 
+                TaskResult(true, deviceInfoManager.getTimeAndDate())
+            
+            hasAny(cleanMsg, listOf("date", "tarikh", "din kya", "aaj kya din", "aaj ki date")) -> 
+                TaskResult(true, deviceInfoManager.getTimeAndDate())
+            
+            // ========== BATTERY ==========
+            hasAny(cleanMsg, listOf("battery", "charge", "kitni battery", "power kitni", "phone battery")) -> 
+                TaskResult(true, deviceInfoManager.getBatteryInfo())
             
             // ========== WIFI ==========
-            msg.contains("wifi") || msg.contains("wi-fi") -> {
-                val turnOn = containsAny(msg, listOf("on", "chalu", "start", "enable"))
+            cleanMsg.contains("wifi") || cleanMsg.contains("wi-fi") || cleanMsg.contains("wifi") -> {
+                val turnOn = !hasAny(cleanMsg, listOf("off", "band", "bandh", "disable"))
                 TaskResult(true, systemController.toggleWifi(turnOn))
             }
             
             // ========== BLUETOOTH ==========
-            msg.contains("bluetooth") -> {
-                val turnOn = containsAny(msg, listOf("on", "chalu", "start", "enable"))
+            cleanMsg.contains("bluetooth") -> {
+                val turnOn = !hasAny(cleanMsg, listOf("off", "band", "bandh", "disable"))
                 TaskResult(true, systemController.toggleBluetooth(turnOn))
             }
             
             // ========== VOLUME ==========
-            containsAny(msg, listOf("volume", "awaaz", "awaz", "sound")) -> {
+            hasAny(cleanMsg, listOf("volume", "awaaz", "awaz", "sound", "vol")) -> {
                 val action = when {
-                    containsAny(msg, listOf("badha", "increase", "zyada", "up")) -> "up"
-                    containsAny(msg, listOf("kam", "decrease", "low", "down")) -> "down"
-                    containsAny(msg, listOf("mute", "silent", "chup")) -> "mute"
-                    containsAny(msg, listOf("full", "max", "pura")) -> "max"
+                    hasAny(cleanMsg, listOf("badha", "increase", "zyada", "up", "high")) -> "up"
+                    hasAny(cleanMsg, listOf("kam", "decrease", "low", "down", "kam kar")) -> "down"
+                    hasAny(cleanMsg, listOf("mute", "silent", "chup", "band")) -> "mute"
+                    hasAny(cleanMsg, listOf("full", "max", "pura", "maximum")) -> "max"
                     else -> "up"
                 }
                 TaskResult(true, systemController.controlVolume(action))
             }
             
             // ========== BRIGHTNESS ==========
-            containsAny(msg, listOf("brightness", "roshni", "chamak")) -> {
+            hasAny(cleanMsg, listOf("brightness", "roshni", "chamak", "screen light")) -> {
                 val action = when {
-                    containsAny(msg, listOf("badha", "increase", "zyada")) -> "up"
-                    containsAny(msg, listOf("kam", "decrease", "low")) -> "down"
-                    containsAny(msg, listOf("full", "max", "pura")) -> "max"
+                    hasAny(cleanMsg, listOf("badha", "increase", "zyada", "up")) -> "up"
+                    hasAny(cleanMsg, listOf("kam", "decrease", "low", "down")) -> "down"
+                    hasAny(cleanMsg, listOf("full", "max", "pura")) -> "max"
                     else -> "up"
                 }
                 TaskResult(true, systemController.controlBrightness(action))
             }
             
             // ========== MUSIC ==========
-            containsAny(msg, listOf("music chala", "gaana chala", "song chala", "play music", "play song")) -> 
+            hasAny(cleanMsg, listOf("music chala", "gaana chala", "song chala", "play music", "play song", "music play")) -> 
                 TaskResult(true, mediaController.play())
             
-            containsAny(msg, listOf("music band", "gaana band", "music pause", "pause karo", "music rok")) -> 
+            hasAny(cleanMsg, listOf("music band", "gaana band", "music pause", "pause karo", "music rok", "stop music")) -> 
                 TaskResult(true, mediaController.pause())
             
-            containsAny(msg, listOf("next song", "agla gaana", "next track", "skip")) -> 
+            hasAny(cleanMsg, listOf("next song", "agla gaana", "next track", "skip", "next music")) -> 
                 TaskResult(true, mediaController.next())
             
             // ========== ALARM ==========
-            containsAny(msg, listOf("alarm laga", "alarm set")) -> {
-                val time = alarmScheduler.parseTime(msg)
+            hasAny(cleanMsg, listOf("alarm laga", "alarm set", "alarm lag", "wake me")) -> {
+                val time = alarmScheduler.parseTime(cleanMsg)
                 if (time != null) {
                     TaskResult(true, alarmScheduler.setAlarm(time.first, time.second))
                 } else {
@@ -157,8 +170,8 @@ class TaskExecutor(private val context: Context) {
             }
             
             // ========== CONTACT SEARCH ==========
-            containsAny(msg, listOf("contact dhundh", "number dhundh", "number bata", "ka number")) -> {
-                val name = extractContact(msg, listOf("contact dhundh", "number dhundh", "number bata", "ka number", "ka", "ki"))
+            hasAny(cleanMsg, listOf("contact dhundh", "number dhundh", "number bata", "ka number", "contact search")) -> {
+                val name = extractSimpleName(cleanMsg, listOf("contact dhundh", "number dhundh", "number bata", "ka number", "ka", "ki", "contact"))
                 if (name.isNotBlank()) {
                     TaskResult(true, contactManager.getContactInfo(name))
                 } else {
@@ -166,26 +179,128 @@ class TaskExecutor(private val context: Context) {
                 }
             }
             
+            // ========== GREETINGS ==========
+            isGreeting(cleanMsg) -> TaskResult(true, getGreetingResponse())
+            
             // ========== THANKS / BYE ==========
-            containsAny(msg, listOf("thanks", "shukriya", "thank you", "dhanyawad")) -> 
+            hasAny(cleanMsg, listOf("thanks", "shukriya", "thank you", "dhanyawad", "thanku")) -> 
                 TaskResult(true, "Arre koi baat nahi yaar! Dost hu tera 💜")
             
-            containsAny(msg, listOf("bye", "alvida", "chalti hu", "ja rahi", "bye bye")) -> 
+            hasAny(cleanMsg, listOf("bye", "alvida", "chalti hu", "ja rahi", "bye bye", "chal bye")) -> 
                 TaskResult(true, "Bye Vikram! Jab bhi zarurat ho, bulana! 👋")
+            
+            // ========== JOKES ==========
+            hasAny(cleanMsg, listOf("joke", "chutkula", "hansa", "joke suna")) -> 
+                TaskResult(true, getRandomJoke())
+            
+            // ========== MOTIVATIONAL ==========
+            hasAny(cleanMsg, listOf("motivate", "motivation", "himmat", "encourage", "quote")) -> 
+                TaskResult(true, getMotivationalQuote())
             
             // ========== DEFAULT: Need AI ==========
             else -> TaskResult(false, "", requiresAI = true)
         }
     }
 
-    // ========== HELPERS ==========
+    // ========== SMART EXTRACTORS ==========
+    
+    private fun extractContactForCall(msg: String): String {
+        // Common patterns:
+        // "mummy ko call karo" → mummy
+        // "call papa" → papa
+        // "papa ko phone lagao" → papa
+        // "rahul ko call kar" → rahul
+        
+        var text = msg
+        val removeWords = listOf(
+            "call karo", "call kar", "call laga", "call lagao",
+            "phone karo", "phone kar", "phone laga", "phone lagao",
+            "dial karo", "dial kar", "ring karo",
+            "ko call", "ko phone", "ko dial", "ko ring",
+            "call", "phone", "dial", "ring",
+            "please", "yaar", "abhi", "jaldi",
+            " ko ", " ka ", " ki ", " ke "
+        )
+        
+        removeWords.forEach { text = text.replace(it, " ") }
+        return text.trim().replace(Regex("\\s+"), " ")
+    }
+    
+    private fun extractAppName(msg: String): String {
+        var text = msg
+        val removeWords = listOf(
+            "app khol karo", "app kholna", 
+            "open karo", "open kar", "open",
+            "khol do", "khol de", "khol", "kholo",
+            "launch karo", "launch kar", "launch",
+            "chalu karo", "chalu kar", "chalu",
+            "start karo", "start kar", "start",
+            "app", "ko", "please", "yaar", "abhi"
+        )
+        
+        removeWords.forEach { text = text.replace(it, " ") }
+        return text.trim().replace(Regex("\\s+"), " ")
+    }
+    
+    private fun extractDirectAppName(msg: String): String {
+        val apps = listOf(
+            "youtube", "whatsapp", "instagram", "facebook", 
+            "chrome", "gmail", "twitter", "telegram", "snapchat",
+            "spotify", "netflix", "amazon", "flipkart", "paytm",
+            "phonepe", "gpay", "maps", "camera", "gallery"
+        )
+        
+        return apps.firstOrNull { msg.contains(it) } ?: ""
+    }
+    
+    private fun extractContactAndMessage(msg: String, appType: String): Pair<String, String> {
+        // "rahul ko whatsapp bhej ki main aa raha hu"
+        // → contact: rahul, message: main aa raha hu
+        
+        val separators = listOf(" ki ", " that ", " bolo ", " likh ", " message ", " msg ")
+        var contactPart = msg
+        var messagePart = ""
+        
+        for (sep in separators) {
+            if (msg.contains(sep)) {
+                val parts = msg.split(sep, limit = 2)
+                contactPart = parts[0]
+                messagePart = if (parts.size > 1) parts[1] else ""
+                break
+            }
+        }
+        
+        // Clean contact part
+        val removeWords = listOf(
+            "whatsapp bhej", "whatsapp send", "whatsapp kar", "whatsapp",
+            "sms bhej", "sms send", "sms kar", "sms",
+            "message bhej", "message send", "text bhej",
+            "ko", "ka", "ki", "pe", "par", "please", "yaar"
+        )
+        
+        var contact = contactPart
+        removeWords.forEach { contact = contact.replace(it, " ") }
+        contact = contact.trim().replace(Regex("\\s+"), " ")
+        
+        return Pair(contact, messagePart.trim())
+    }
+    
+    private fun extractSimpleName(msg: String, keywords: List<String>): String {
+        var text = msg
+        keywords.forEach { text = text.replace(it, " ") }
+        return text.trim().replace(Regex("\\s+"), " ")
+    }
+    
+    private fun hasAny(text: String, keywords: List<String>): Boolean {
+        return keywords.any { text.contains(it) }
+    }
     
     private fun isGreeting(msg: String): Boolean {
         val greetings = listOf(
             "hi", "hello", "hey", "namaste", "namaskar",
             "kaise ho", "kaisi ho", "kya haal", "sup",
             "good morning", "good evening", "good night",
-            "subah", "shaam"
+            "subah bakhair", "shaam bakhair"
         )
         return greetings.any { msg.contains(it) }
     }
@@ -194,43 +309,47 @@ class TaskExecutor(private val context: Context) {
         val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
         val greetings = when {
             hour in 5..11 -> listOf(
-                "Good morning Vikram! ☀️ Kaisa hai aaj?",
-                "Subah ho gayi yaar! Uth gaya? 😄",
-                "Namaste Vikram! Aaj ka din mast ho!"
+                "Good morning Vikram! ☀️ Aaj ka din mast ho!",
+                "Subah ho gayi yaar! Uth gaya? Chai peeni hai? ☕",
+                "Namaste Vikram! Ready for the day? 😊"
             )
             hour in 12..16 -> listOf(
-                "Kya haal hai Vikram? 😊",
-                "Hey yaar! Lunch kar liya?",
-                "Namaste! Kaise ho?"
+                "Kya haal hai Vikram? 😊 Lunch kar liya?",
+                "Hey yaar! Kya kar raha hai?",
+                "Namaste! Din kaisa ja raha hai?"
             )
             hour in 17..20 -> listOf(
-                "Good evening Vikram! 🌆",
-                "Hey! Shaam ho gayi, kaisi rahi day?",
-                "Namaste yaar! Chai piyoge? 😄"
+                "Good evening Vikram! 🌆 Kaisa raha din?",
+                "Hey! Shaam ho gayi, thak gaya?",
+                "Namaste yaar! Chai break?"
             )
             else -> listOf(
-                "Hey Vikram! Abhi tak jaag raha hai? 🌙",
-                "Namaste! Late night coding? 💻",
-                "Kya haal hai yaar? Raat ho gayi!"
+                "Hey Vikram! Late night coding? 💻",
+                "Namaste! Abhi tak jaag raha hai?",
+                "Kya haal hai? Neend nahi aa rahi kya?"
             )
         }
         return greetings.random()
     }
     
-    private fun containsAny(text: String, keywords: List<String>): Boolean {
-        return keywords.any { text.contains(it) }
+    private fun getRandomJoke(): String {
+        val jokes = listOf(
+            "Teacher: Vikram, tumhare paper mein tumhare bhai jaisi likhawat hai. Vikram: Sir, hum dono ek hi pen use karte hain! 😂",
+            "Programmer ki wife: Bread lekar aana, agar ande milen toh ek le lena. Programmer 12 breads laata hai. Wife: Kyu? Programmer: Ande mil gaye the! 🤣",
+            "CSE student ka pyar: Mujhe tumse infinite loop jitna pyar hai! Girl: Break statement kab lagega? 😄",
+            "Vikram: Yaar, mujhe rat ko sapna aya ki main lottery jeeta! Friend: Congrats! Kitne mile? Vikram: Sapna tha yaar! 🤪"
+        )
+        return jokes.random()
     }
     
-    private fun extractContact(text: String, keywords: List<String>): String {
-        var result = text
-        keywords.forEach { result = result.replace(it, " ") }
-        return result.trim().replace(Regex("\\s+"), " ")
-    }
-    
-    private fun extractAppName(msg: String): String {
-        val keywords = listOf("open kar", "khol do", "khol", "launch", "chalu kar", "open", "kholna")
-        var result = msg
-        keywords.forEach { result = result.replace(it, " ") }
-        return result.trim().replace(Regex("\\s+"), " ")
+    private fun getMotivationalQuote(): String {
+        val quotes = listOf(
+            "Vikram yaar, tu bahut talented hai! Bas apne aap pe bharosa rakh! 💪",
+            "Har din ek nayi shuruat hai. Aaj se mehnat shuru kar, kal ka superstar tu hoga! 🌟",
+            "5th sem hai bhai, ab focus kar. Placement ke liye ready ho ja! 🚀",
+            "Failure success ki seedhi hai. Tu bhi kar sakta hai, main hu na tere saath! ❤️",
+            "CSE mein ho, world change karne wale ho. Chalo, code likhna shuru karo! 💻"
+        )
+        return quotes.random()
     }
 }

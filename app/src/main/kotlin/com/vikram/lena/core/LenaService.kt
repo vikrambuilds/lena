@@ -23,6 +23,7 @@ class LenaService : Service() {
     private lateinit var wakeLock: PowerManager.WakeLock
     
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private var wakeWordEnabled = true
     
     companion object {
         const val CHANNEL_ID = "LenaServiceChannel"
@@ -31,11 +32,11 @@ class LenaService : Service() {
         const val ACTION_START_LISTENING = "com.vikram.lena.START_LISTENING"
         const val ACTION_STOP_LISTENING = "com.vikram.lena.STOP_LISTENING"
         const val ACTION_STOP_SERVICE = "com.vikram.lena.STOP_SERVICE"
+        const val ACTION_TOGGLE_WAKE_WORD = "com.vikram.lena.TOGGLE_WAKE_WORD"
         
         var isRunning = false
             private set
         
-        // Callbacks for UI to observe state
         var onStatusChanged: ((String) -> Unit)? = null
         var onVolumeChanged: ((Float) -> Unit)? = null
         var onNewMessage: (() -> Unit)? = null
@@ -53,13 +54,12 @@ class LenaService : Service() {
         
         setupVoiceCallbacks()
         
-        // WakeLock for background operation
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
             "Lena::WakeLock"
         )
-        wakeLock.acquire(10 * 60 * 1000L) // 10 minutes
+        wakeLock.acquire(30 * 60 * 1000L) // 30 minutes
         
         isRunning = true
     }
@@ -71,11 +71,15 @@ class LenaService : Service() {
         
         voiceManager.onSpeechError = { error ->
             updateStatus("❌ $error")
-            voiceManager.speak(error)
+            // Restart wake word after error
+            serviceScope.launch {
+                delay(2000)
+                if (wakeWordEnabled) startWakeWordMode()
+            }
         }
         
         voiceManager.onListeningStart = {
-            updateStatus("🎤 Sun rahi hu...")
+            updateStatus("🎤 Bolo Vikram...")
         }
         
         voiceManager.onListeningEnd = {
@@ -85,40 +89,74 @@ class LenaService : Service() {
         voiceManager.onVolumeChanged = { volume ->
             onVolumeChanged?.invoke(volume)
         }
+        
+        // WAKE WORD DETECTED!
+        voiceManager.onWakeWordDetected = {
+            vibrate()
+            updateStatus("✨ Haan Vikram, bol!")
+            voiceManager.speak("Haan bolo") {
+                // After greeting, start listening for command
+                voiceManager.startListening()
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIFICATION_ID, createNotification("Ready to help! 🤖"))
+        startForeground(NOTIFICATION_ID, createNotification("Lena ready! Bolo \"Lena\" 🎧"))
         
         when (intent?.action) {
-            ACTION_START_LISTENING -> startListening()
+            ACTION_START_LISTENING -> {
+                voiceManager.stopWakeWordListening()
+                startListening()
+            }
             ACTION_STOP_LISTENING -> stopListening()
             ACTION_STOP_SERVICE -> stopSelf()
+            ACTION_TOGGLE_WAKE_WORD -> toggleWakeWord()
+            else -> {
+                // Default: start wake word listening
+                startWakeWordMode()
+            }
         }
         
         return START_STICKY
     }
 
+    private fun startWakeWordMode() {
+        if (!wakeWordEnabled) return
+        updateStatus("🎧 \"Lena\" bolo activate karne ke liye...")
+        voiceManager.startWakeWordListening()
+    }
+
     fun startListening() {
-        // Refresh API keys in case they changed
         aiManager.updateKeys(preferencesManager.geminiApiKey, preferencesManager.openaiApiKey)
-        
-        // Vibrate to give feedback
-        vibrate()
-        
         voiceManager.startListening()
     }
 
     fun stopListening() {
         voiceManager.stopListening()
         voiceManager.stopSpeaking()
-        updateStatus("Ready to help! 🤖")
+        updateStatus("Lena ready! Bolo \"Lena\" 🎧")
+        
+        // Resume wake word mode
+        serviceScope.launch {
+            delay(1000)
+            if (wakeWordEnabled) startWakeWordMode()
+        }
+    }
+    
+    private fun toggleWakeWord() {
+        wakeWordEnabled = !wakeWordEnabled
+        if (wakeWordEnabled) {
+            startWakeWordMode()
+        } else {
+            voiceManager.stopWakeWordListening()
+            updateStatus("Wake word disabled. Tap orb to talk.")
+        }
     }
 
     private fun handleUserMessage(userMessage: String) {
         updateStatus("💭 \"$userMessage\"")
         
-        // Save user message
         conversationManager.saveMessage("Vikram", userMessage)
         onNewMessage?.invoke()
         
@@ -133,12 +171,10 @@ class LenaService : Service() {
                 val model: String
                 
                 if (taskResult.handled) {
-                    // Offline task executed successfully
                     finalResponse = taskResult.response
                     model = "Offline"
                     updateStatus("✅ Task done!")
                 } else {
-                    // Need AI to respond
                     if (!aiManager.hasValidKey()) {
                         finalResponse = "Yaar, pehle Settings mein Gemini API key set karo! Free hai — aistudio.google.com se le le."
                         model = "NoKey"
@@ -151,14 +187,19 @@ class LenaService : Service() {
                     }
                 }
                 
-                // Save Lena's response
                 conversationManager.saveMessage("Lena", finalResponse, model)
                 onNewMessage?.invoke()
                 
-                // Speak the response
                 updateStatus("🗣️ Bol rahi hu...")
                 voiceManager.speak(finalResponse) {
-                    updateStatus("Ready to help! 🤖")
+                    updateStatus("Lena ready! Bolo \"Lena\" 🎧")
+                    // Resume wake word listening
+                    if (wakeWordEnabled) {
+                        serviceScope.launch {
+                            delay(500)
+                            startWakeWordMode()
+                        }
+                    }
                 }
                 
             } catch (e: Exception) {
@@ -166,7 +207,13 @@ class LenaService : Service() {
                 conversationManager.saveMessage("Lena", errorMsg, "Error")
                 onNewMessage?.invoke()
                 voiceManager.speak(errorMsg) {
-                    updateStatus("Ready to help! 🤖")
+                    updateStatus("Lena ready! Bolo \"Lena\" 🎧")
+                    if (wakeWordEnabled) {
+                        serviceScope.launch {
+                            delay(500)
+                            startWakeWordMode()
+                        }
+                    }
                 }
             }
         }
@@ -188,10 +235,10 @@ class LenaService : Service() {
         }
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
+            vibrator.vibrate(VibrationEffect.createOneShot(80, VibrationEffect.DEFAULT_AMPLITUDE))
         } else {
             @Suppress("DEPRECATION")
-            vibrator.vibrate(100)
+            vibrator.vibrate(80)
         }
     }
 
@@ -204,6 +251,8 @@ class LenaService : Service() {
             ).apply {
                 description = "Lena AI is ready to help"
                 setShowBadge(false)
+                setSound(null, null) // No notification sound
+                enableVibration(false)
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
@@ -230,9 +279,10 @@ class LenaService : Service() {
             .setContentText(status)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(pendingIntent)
-            .addAction(android.R.drawable.ic_btn_speak_now, "🎤 Listen", listenPendingIntent)
+            .addAction(android.R.drawable.ic_btn_speak_now, "🎤 Talk", listenPendingIntent)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setSilent(true)
             .build()
     }
 

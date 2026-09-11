@@ -2,7 +2,6 @@ package com.vikram.lena.ui.screens
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -10,6 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -17,9 +17,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vikram.lena.ui.components.GlassCard
@@ -64,14 +64,13 @@ fun HomeScreen(
                         fontSize = 14.sp
                     )
                     Text(
-                        "Lena AI",
+                        "Lena AI v2.2",
                         color = Color.White,
                         fontSize = 28.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
                 
-                // Status indicator
                 Box(
                     modifier = Modifier
                         .size(50.dp)
@@ -92,6 +91,40 @@ fun HomeScreen(
                 }
             }
             
+            // Wake Word Info
+            AnimatedVisibility(
+                visible = isServiceRunning && !isListening && !isSpeaking,
+                enter = fadeIn() + slideInVertically(),
+                exit = fadeOut() + slideOutVertically()
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                    colors = CardDefaults.cardColors(containerColor = NeonPurple.copy(alpha = 0.2f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("🎧", fontSize = 20.sp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Bas bolo: \"Lena\"",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                "Lena sunti rehti hai continuously",
+                                color = TextSecondary,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+            }
+            
             // API Key Warning
             AnimatedVisibility(
                 visible = !hasApiKey,
@@ -101,7 +134,7 @@ fun HomeScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 16.dp),
+                        .padding(top = 8.dp),
                     colors = CardDefaults.cardColors(containerColor = WarningYellow.copy(alpha = 0.2f)),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -118,7 +151,7 @@ fun HomeScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                "Sirf offline commands kaam karenge",
+                                "Only offline commands work",
                                 color = TextSecondary,
                                 fontSize = 12.sp
                             )
@@ -132,7 +165,7 @@ fun HomeScreen(
             
             Spacer(modifier = Modifier.height(40.dp))
             
-            // Voice Orb (Main Center)
+            // Voice Orb
             VoiceOrb(
                 isListening = isListening,
                 isSpeaking = isSpeaking,
@@ -148,7 +181,6 @@ fun HomeScreen(
             
             Spacer(modifier = Modifier.height(24.dp))
             
-            // Status Text
             AnimatedContent(
                 targetState = statusText,
                 label = "status"
@@ -157,13 +189,14 @@ fun HomeScreen(
                     text = status,
                     color = Color.White,
                     fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center
                 )
             }
             
             Spacer(modifier = Modifier.height(24.dp))
             
-            // Service Toggle Button
+            // Buttons
             if (!isServiceRunning) {
                 Button(
                     onClick = onStartService,
@@ -216,31 +249,27 @@ fun HomeScreen(
             
             Spacer(modifier = Modifier.height(32.dp))
             
-            // Quick Commands
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "✨ Try these commands",
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            Text(
+                "✨ Try these commands",
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.Start)
+            )
             
             Spacer(modifier = Modifier.height(16.dp))
             
             val quickCommands = listOf(
-                Triple("📞", "Call", "\"Mummy ko call karo\""),
-                Triple("📱", "Apps", "\"YouTube khol do\""),
                 Triple("🔦", "Torch", "\"Torch jala do\""),
+                Triple("📞", "Call", "\"Papa ko call karo\""),
+                Triple("📱", "YouTube", "\"YouTube khol do\""),
+                Triple("💬", "WhatsApp", "\"WhatsApp khol do\""),
                 Triple("🔊", "Volume", "\"Volume badha do\""),
                 Triple("🔋", "Battery", "\"Battery kitni hai?\""),
                 Triple("⏰", "Time", "\"Kitne baje hain?\""),
-                Triple("💬", "WhatsApp", "\"WhatsApp khol do\""),
-                Triple("🎵", "Music", "\"Gaana chala do\"")
+                Triple("😂", "Joke", "\"Ek joke suna\""),
+                Triple("💪", "Motivate", "\"Motivate kar mujhe\""),
+                Triple("🎵", "Music", "\"Music chala do\"")
             )
             
             LazyRow(
@@ -254,14 +283,13 @@ fun HomeScreen(
             
             Spacer(modifier = Modifier.height(24.dp))
             
-            // Info Cards
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("💡", fontSize = 24.sp)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            "How to use Lena?",
+                            "How to use Lena v2.2?",
                             color = Color.White,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold
@@ -270,9 +298,10 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         "1. START LENA button dabao\n" +
-                        "2. Orb ya Talk button pe tap karo\n" +
-                        "3. Command bolo (Hindi/English)\n" +
-                        "4. Lena awaaz mein reply karegi!",
+                        "2. Bas bolo: \"Lena\" (wake word)\n" +
+                        "3. Vibrate hoga → Command bolo\n" +
+                        "4. Lena sweet voice mein reply karegi!\n\n" +
+                        "Ya orb pe tap karke direct bhi bol sakte ho.",
                         color = TextSecondary,
                         fontSize = 14.sp
                     )
@@ -307,7 +336,7 @@ fun CommandCard(icon: String, title: String, example: String) {
                 example,
                 color = TextTertiary,
                 fontSize = 10.sp,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                textAlign = TextAlign.Center
             )
         }
     }

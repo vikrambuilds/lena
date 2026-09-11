@@ -11,25 +11,39 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.speech.tts.Voice
 import java.util.*
 
 /**
- * Unified Voice Manager - Simple, Reliable, Working
- * Handles both STT (Speech-to-Text) and TTS (Text-to-Speech)
+ * Advanced Voice Manager v2.2
+ * - Sweet female Hindi voice
+ * - Wake word detection ("Lena")
+ * - Muted beep sounds
+ * - Better recognition accuracy
  */
 class VoiceManager(private val context: Context) {
 
-    // ========== STT ==========
     private var speechRecognizer: SpeechRecognizer? = null
     private var isListening = false
+    private var isWakeWordMode = false // Continuous wake word listening
     
-    // ========== TTS ==========
     private var tts: TextToSpeech? = null
     private var isTtsReady = false
     private var pendingSpeech: String? = null
     private var pendingCallback: (() -> Unit)? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var audioManager: AudioManager? = null
+    private var originalMusicVolume = 0
+    private var originalSystemVolume = 0
+    private var originalNotificationVolume = 0
+    
+    // Wake word variants (spelling variations for better detection)
+    private val wakeWords = listOf(
+        "lena", "leena", "lina", "layna", "laina",
+        "hey lena", "ok lena", "hi lena", "hello lena",
+        "arey lena", "arre lena", "oh lena", "sun lena"
+    )
 
     // Callbacks
     var onSpeechResult: ((String) -> Unit)? = null
@@ -37,50 +51,106 @@ class VoiceManager(private val context: Context) {
     var onListeningStart: (() -> Unit)? = null
     var onListeningEnd: (() -> Unit)? = null
     var onVolumeChanged: ((Float) -> Unit)? = null
+    var onWakeWordDetected: (() -> Unit)? = null
 
     init {
+        audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         initTTS()
     }
 
-    // ========== TTS INIT ==========
+    // ========== TTS INIT (Sweet Female Voice) ==========
     private fun initTTS() {
         tts = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                // Try Hindi first, fallback to English
-                val hindiResult = tts?.setLanguage(Locale("hi", "IN"))
-                if (hindiResult == TextToSpeech.LANG_MISSING_DATA ||
-                    hindiResult == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    tts?.setLanguage(Locale.US)
-                }
-                
-                tts?.setPitch(1.1f)
-                tts?.setSpeechRate(0.95f)
-                
-                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) {}
-                    override fun onDone(utteranceId: String?) {
-                        mainHandler.post {
-                            pendingCallback?.invoke()
-                            pendingCallback = null
-                        }
-                    }
-                    override fun onError(utteranceId: String?) {
-                        mainHandler.post {
-                            pendingCallback?.invoke()
-                            pendingCallback = null
-                        }
-                    }
-                })
-                
+                setupBestFemaleVoice()
+                setupTtsListener()
                 isTtsReady = true
                 
-                // Play any pending speech
                 pendingSpeech?.let { text ->
                     speak(text, pendingCallback)
                     pendingSpeech = null
                 }
             }
         }
+    }
+
+    private fun setupBestFemaleVoice() {
+        // Try Hindi first
+        val hindiIndia = Locale("hi", "IN")
+        val hindiResult = tts?.setLanguage(hindiIndia)
+        
+        if (hindiResult == TextToSpeech.LANG_MISSING_DATA || 
+            hindiResult == TextToSpeech.LANG_NOT_SUPPORTED) {
+            tts?.setLanguage(Locale("en", "IN"))
+        }
+        
+        // Find best female voice
+        val voices = tts?.voices ?: return
+        
+        val bestVoice = voices
+            .filter { voice ->
+                val name = voice.name.lowercase()
+                val locale = voice.locale
+                
+                // Prefer Hindi voices
+                (locale.language == "hi" || locale.language == "en") &&
+                // Female voice indicators
+                (name.contains("female") || 
+                 name.contains("f#") ||
+                 name.contains("wavenet-a") ||   // Google Wavenet Female
+                 name.contains("wavenet-c") ||   // Google Wavenet Female
+                 name.contains("wavenet-e") ||   // Google Wavenet Female
+                 name.contains("neural2-a") ||   // Google Neural2 Female
+                 name.contains("neural2-c") ||   // Google Neural2 Female
+                 name.contains("standard-a") ||  // Google Standard Female
+                 name.contains("hi-in-x-hie") || // Hindi Female
+                 name.contains("hi-in-x-hia") || // Hindi Female
+                 name.contains("en-in-x-ene")) && // Indian English Female
+                !voice.isNetworkConnectionRequired
+            }
+            .maxByOrNull { voice ->
+                var score = 0
+                val name = voice.name.lowercase()
+                if (voice.locale.language == "hi") score += 100
+                if (name.contains("wavenet")) score += 50
+                if (name.contains("neural")) score += 40
+                if (voice.quality >= 400) score += 30
+                if (name.contains("female") || name.contains("-a") || name.contains("-c")) score += 20
+                score
+            }
+        
+        if (bestVoice != null) {
+            tts?.voice = bestVoice
+        } else {
+            // Fallback: try any Hindi/Indian voice
+            val fallbackVoice = voices.firstOrNull { 
+                it.locale.language == "hi" || 
+                (it.locale.language == "en" && it.locale.country == "IN")
+            }
+            fallbackVoice?.let { tts?.voice = it }
+        }
+        
+        // Sweet feminine voice tuning
+        tts?.setPitch(1.15f)      // Higher pitch = feminine, sweet
+        tts?.setSpeechRate(0.9f)  // Slightly slow = clear, warm
+    }
+    
+    private fun setupTtsListener() {
+        tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {}
+            override fun onDone(utteranceId: String?) {
+                mainHandler.post {
+                    pendingCallback?.invoke()
+                    pendingCallback = null
+                }
+            }
+            override fun onError(utteranceId: String?) {
+                mainHandler.post {
+                    pendingCallback?.invoke()
+                    pendingCallback = null
+                }
+            }
+        })
     }
 
     // ========== SPEAK ==========
@@ -108,18 +178,53 @@ class VoiceManager(private val context: Context) {
 
     fun isSpeaking(): Boolean = tts?.isSpeaking == true
 
-    // ========== START LISTENING ==========
-    fun startListening() {
-        if (isListening) return
+    // ========== MUTE BEEP SOUNDS ==========
+    private fun muteBeepSounds() {
+        audioManager?.let { am ->
+            try {
+                // Store original volumes
+                originalMusicVolume = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+                originalSystemVolume = am.getStreamVolume(AudioManager.STREAM_SYSTEM)
+                originalNotificationVolume = am.getStreamVolume(AudioManager.STREAM_NOTIFICATION)
+                
+                // Mute system beeps (but keep music/TTS)
+                am.setStreamVolume(AudioManager.STREAM_SYSTEM, 0, 0)
+                am.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0)
+            } catch (e: Exception) {
+                // Some devices don't allow this - ignore
+            }
+        }
+    }
+    
+    private fun restoreBeepSounds() {
+        audioManager?.let { am ->
+            try {
+                am.setStreamVolume(AudioManager.STREAM_SYSTEM, originalSystemVolume, 0)
+                am.setStreamVolume(AudioManager.STREAM_NOTIFICATION, originalNotificationVolume, 0)
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
+    }
+
+    // ========== WAKE WORD LISTENING (Continuous) ==========
+    fun startWakeWordListening() {
+        isWakeWordMode = true
+        startWakeWordCycle()
+    }
+    
+    fun stopWakeWordListening() {
+        isWakeWordMode = false
+        stopListening()
+    }
+    
+    private fun startWakeWordCycle() {
+        if (!isWakeWordMode) return
         
         mainHandler.post {
             try {
-                // Stop any ongoing speech first
-                if (isSpeaking()) tts?.stop()
-                
-                // Cleanup old recognizer
+                muteBeepSounds()
                 speechRecognizer?.destroy()
-                
                 speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
                 
                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -127,11 +232,103 @@ class VoiceManager(private val context: Context) {
                         RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN")
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "hi-IN")
-                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+                    putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, false)
+                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                    putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
+                }
+                
+                speechRecognizer?.setRecognitionListener(object : RecognitionListener {
+                    override fun onReadyForSpeech(params: Bundle?) {}
+                    override fun onBeginningOfSpeech() {}
+                    override fun onRmsChanged(rmsdB: Float) {}
+                    override fun onBufferReceived(buffer: ByteArray?) {}
+                    override fun onEndOfSpeech() {}
+                    override fun onEvent(eventType: Int, params: Bundle?) {}
+                    
+                    override fun onPartialResults(partialResults: Bundle?) {
+                        val matches = partialResults?.getStringArrayList(
+                            SpeechRecognizer.RESULTS_RECOGNITION
+                        )
+                        matches?.forEach { text ->
+                            if (containsWakeWord(text.lowercase())) {
+                                onWakeWordActivated()
+                                return
+                            }
+                        }
+                    }
+                    
+                    override fun onResults(results: Bundle?) {
+                        val matches = results?.getStringArrayList(
+                            SpeechRecognizer.RESULTS_RECOGNITION
+                        )
+                        var found = false
+                        matches?.forEach { text ->
+                            if (containsWakeWord(text.lowercase())) {
+                                onWakeWordActivated()
+                                found = true
+                                return@forEach
+                            }
+                        }
+                        
+                        // Continue listening if not found
+                        if (!found && isWakeWordMode) {
+                            mainHandler.postDelayed({ startWakeWordCycle() }, 100)
+                        }
+                    }
+                    
+                    override fun onError(error: Int) {
+                        // Silently restart on error (common in continuous mode)
+                        if (isWakeWordMode) {
+                            mainHandler.postDelayed({ startWakeWordCycle() }, 500)
+                        }
+                    }
+                })
+                
+                speechRecognizer?.startListening(intent)
+                
+            } catch (e: Exception) {
+                if (isWakeWordMode) {
+                    mainHandler.postDelayed({ startWakeWordCycle() }, 1000)
+                }
+            }
+        }
+    }
+    
+    private fun containsWakeWord(text: String): Boolean {
+        return wakeWords.any { text.contains(it) }
+    }
+    
+    private fun onWakeWordActivated() {
+        speechRecognizer?.destroy()
+        speechRecognizer = null
+        onWakeWordDetected?.invoke()
+    }
+
+    // ========== NORMAL COMMAND LISTENING ==========
+    fun startListening() {
+        if (isListening) return
+        
+        mainHandler.post {
+            try {
+                if (isSpeaking()) tts?.stop()
+                
+                muteBeepSounds()
+                speechRecognizer?.destroy()
+                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
+                
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                        RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    // Multi-language for better accuracy
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN")
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "hi-IN")
+                    putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, false)
+                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
                     putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1000L)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500L)
                 }
                 
                 speechRecognizer?.setRecognitionListener(object : RecognitionListener {
@@ -143,7 +340,6 @@ class VoiceManager(private val context: Context) {
                     override fun onBeginningOfSpeech() {}
                     
                     override fun onRmsChanged(rmsdB: Float) {
-                        // Normalize to 0-1 range for animation
                         val normalized = ((rmsdB + 10f) / 20f).coerceIn(0f, 1f)
                         onVolumeChanged?.invoke(normalized)
                     }
@@ -160,13 +356,25 @@ class VoiceManager(private val context: Context) {
                     
                     override fun onResults(results: Bundle?) {
                         isListening = false
+                        restoreBeepSounds()
                         onListeningEnd?.invoke()
                         
                         val matches = results?.getStringArrayList(
                             SpeechRecognizer.RESULTS_RECOGNITION
                         )
+                        val confidences = results?.getFloatArray(
+                            SpeechRecognizer.CONFIDENCE_SCORES
+                        )
+                        
                         if (!matches.isNullOrEmpty()) {
-                            onSpeechResult?.invoke(matches[0])
+                            // Pick best result based on confidence
+                            val bestResult = if (confidences != null && confidences.isNotEmpty()) {
+                                val bestIndex = confidences.indices.maxByOrNull { confidences[it] } ?: 0
+                                matches[bestIndex.coerceAtMost(matches.size - 1)]
+                            } else {
+                                matches[0]
+                            }
+                            onSpeechResult?.invoke(bestResult)
                         } else {
                             onSpeechError?.invoke("Kuch samjh nahi aaya yaar!")
                         }
@@ -174,6 +382,7 @@ class VoiceManager(private val context: Context) {
                     
                     override fun onError(error: Int) {
                         isListening = false
+                        restoreBeepSounds()
                         onListeningEnd?.invoke()
                         
                         val errorMsg = when (error) {
@@ -182,9 +391,9 @@ class VoiceManager(private val context: Context) {
                             SpeechRecognizer.ERROR_NETWORK -> "Internet check kar!"
                             SpeechRecognizer.ERROR_AUDIO -> "Mic mein problem hai!"
                             SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Mic permission de yaar!"
-                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Ruk ja thoda, busy hu!"
-                            SpeechRecognizer.ERROR_CLIENT -> "" // Ignore, common error
-                            else -> "Error $error aayi!"
+                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> ""
+                            SpeechRecognizer.ERROR_CLIENT -> ""
+                            else -> ""
                         }
                         
                         if (errorMsg.isNotEmpty()) {
@@ -197,7 +406,8 @@ class VoiceManager(private val context: Context) {
                 
             } catch (e: Exception) {
                 isListening = false
-                onSpeechError?.invoke("Voice recognition start nahi ho paya: ${e.message}")
+                restoreBeepSounds()
+                onSpeechError?.invoke("Voice recognition start nahi ho paya!")
             }
         }
     }
@@ -207,6 +417,9 @@ class VoiceManager(private val context: Context) {
             isListening = false
             speechRecognizer?.stopListening()
             speechRecognizer?.cancel()
+            speechRecognizer?.destroy()
+            speechRecognizer = null
+            restoreBeepSounds()
         }
     }
 
@@ -214,9 +427,9 @@ class VoiceManager(private val context: Context) {
 
     // ========== CLEANUP ==========
     fun destroy() {
+        isWakeWordMode = false
         stopListening()
-        speechRecognizer?.destroy()
-        speechRecognizer = null
+        restoreBeepSounds()
         
         tts?.stop()
         tts?.shutdown()
@@ -226,10 +439,10 @@ class VoiceManager(private val context: Context) {
     // ========== HELPER ==========
     private fun cleanTextForSpeech(text: String): String {
         return text
-            .replace(Regex("[\\p{So}\\p{Sk}]"), "") // Remove emojis
-            .replace(Regex("[*#`_~]"), "")           // Remove markdown
-            .replace(Regex("\\n+"), ". ")            // Newlines to pauses
-            .replace(Regex("\\s+"), " ")             // Multiple spaces
+            .replace(Regex("[\\p{So}\\p{Sk}]"), "")
+            .replace(Regex("[*#`_~]"), "")
+            .replace(Regex("\\n+"), ". ")
+            .replace(Regex("\\s+"), " ")
             .trim()
     }
 }

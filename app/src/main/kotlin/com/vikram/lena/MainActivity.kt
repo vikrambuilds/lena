@@ -58,14 +58,13 @@ class MainActivity : ComponentActivity() {
         var isListening by remember { mutableStateOf(false) }
         var isSpeaking by remember { mutableStateOf(false) }
         var volume by remember { mutableStateOf(0f) }
-        var statusText by remember { mutableStateOf("Tap orb to talk 🤖") }
+        var statusText by remember { mutableStateOf("Bolo \"Lena\" activate karne ke liye 🎧") }
         var hasApiKey by remember { mutableStateOf(preferencesManager.hasApiKey()) }
         
-        // Register service callbacks
         DisposableEffect(Unit) {
             LenaService.onStatusChanged = { status ->
                 statusText = status
-                isListening = status.contains("🎤") || status.contains("Sun rahi")
+                isListening = status.contains("🎤") || status.contains("Bolo Vikram")
                 isSpeaking = status.contains("🗣️") || status.contains("bol rahi")
             }
             LenaService.onVolumeChanged = { vol ->
@@ -78,7 +77,6 @@ class MainActivity : ComponentActivity() {
             }
         }
         
-        // Check service status periodically
         LaunchedEffect(Unit) {
             while (true) {
                 isServiceRunning = LenaService.isRunning
@@ -145,7 +143,8 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.READ_PHONE_STATE,
             Manifest.permission.SEND_SMS,
             Manifest.permission.READ_SMS,
-            Manifest.permission.CAMERA
+            Manifest.permission.CAMERA,
+            Manifest.permission.MODIFY_AUDIO_SETTINGS
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
@@ -166,7 +165,7 @@ class MainActivity : ComponentActivity() {
         } else {
             startService(intent)
         }
-        Toast.makeText(this, "Lena activated! 🚀", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Lena ready! Bolo \"Lena\" 🚀", Toast.LENGTH_LONG).show()
     }
     
     private fun stopLenaService() {

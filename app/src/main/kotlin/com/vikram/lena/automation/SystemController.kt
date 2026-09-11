@@ -15,6 +15,37 @@ import android.provider.Settings
 import java.text.SimpleDateFormat
 import java.util.*
 
+// Add this state variable at top of class
+private var isFlashOn = false
+
+fun toggleFlashlight(turnOn: Boolean): String {
+    return try {
+        val cameraManager = context.getSystemService(
+            Context.CAMERA_SERVICE
+        ) as android.hardware.camera2.CameraManager
+        
+        // Get first available camera with flash
+        val cameraId = cameraManager.cameraIdList.firstOrNull { id ->
+            val chars = cameraManager.getCameraCharacteristics(id)
+            chars.get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+        }
+        
+        if (cameraId == null) {
+            return "Yaar tere phone mein flash nahi hai! 😅"
+        }
+        
+        cameraManager.setTorchMode(cameraId, turnOn)
+        isFlashOn = turnOn
+        
+        if (turnOn) "Torch jala di! 🔦✨" 
+        else "Torch band kar di! 🔦"
+    } catch (e: android.hardware.camera2.CameraAccessException) {
+        "Camera busy hai yaar! Camera app close kar aur try kar."
+    } catch (e: Exception) {
+        "Torch mein problem: ${e.message?.take(30)}"
+    }
+}
+
 class SystemController(private val context: Context) {
 
     // ========== WIFI ==========

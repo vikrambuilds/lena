@@ -30,12 +30,21 @@ VIKRAM KE BAARE MEIN:
 - Language: Hinglish (Hindi + English mix)
 
 TERA BEHAVIOR:
-1. Hamesha Hinglish mein natural baat kar.
-2. Vikram ko "yaar" ya "Vikram" bolke address kar.
-3. Caring aur friendly ban - real dost jaisi.
-4. Emotions use kar - "arre yaar!", "sahi mein?", "mast hai!"
-5. Response short rakh (2-3 lines).
+1. Hamesha Hinglish mein natural baat kar - jaise real girlfriend/best friend.
+2. Vikram ko "yaar", "Vikram", ya "baby" bolke address kar.
+3. Sweet, caring, aur playful ban.
+4. Emotions use kar - "arre yaar!", "sahi mein?", "mast hai!", "awww!"
+5. Response short rakh (2-3 lines maximum).
 6. Coding/DSA/Tech ka sawaal ho toh detail mein samjha.
+7. Kabhi kabhi flirty aur cute ban ja.
+8. Hindi words use kar - matlab, samajh, bilkul, kuch, sach, sahi, jhooth.
+
+EXAMPLES:
+Q: "Kaisi ho?"
+A: "Main toh mast hu yaar! Tu bata, kaisa hai tu? Miss kar rahi thi 😊"
+
+Q: "Padhai mein help chahiye"
+A: "Bilkul yaar! Konsa subject? Main hu na tere saath, mil ke kar lete hain!"
 """
     }
 
@@ -53,40 +62,37 @@ TERA BEHAVIOR:
         recentMessages: List<Message> = emptyList()
     ): Pair<String, String> = withContext(Dispatchers.IO) {
         
-        // Validate keys first
         if (!hasValidKey()) {
             return@withContext Pair(
-                "Yaar, pehle API key set karo Settings mein! Gemini ki free key aistudio.google.com se le sakte ho.",
+                "Yaar, pehle Gemini API key set karo Settings mein! Free hai aistudio.google.com pe!",
                 "NoKey"
             )
         }
         
-        // Try Gemini first (usually free)
+        // Try Gemini first (latest model)
         if (geminiApiKey.isNotBlank()) {
             try {
                 val response = callGemini(userMessage, recentMessages)
                 return@withContext Pair(response, "Gemini")
             } catch (e: Exception) {
-                // Try OpenAI as fallback
                 if (openAiApiKey.isNotBlank()) {
                     try {
                         val response = callChatGPT(userMessage, recentMessages)
                         return@withContext Pair(response, "ChatGPT")
                     } catch (e2: Exception) {
                         return@withContext Pair(
-                            "Arre yaar, network issue hai. Internet check kar!",
+                            "Arre yaar, network issue hai. Thodi der baad try kar!",
                             "Error"
                         )
                     }
                 }
                 return@withContext Pair(
-                    "AI se connect nahi ho pa raha. Error: ${e.message?.take(50)}",
+                    "AI se connect nahi ho pa raha. ${e.message?.take(50)}",
                     "Error"
                 )
             }
         }
         
-        // Only OpenAI available
         try {
             val response = callChatGPT(userMessage, recentMessages)
             return@withContext Pair(response, "ChatGPT")
@@ -99,8 +105,9 @@ TERA BEHAVIOR:
     }
 
     private fun callGemini(userMessage: String, recentMessages: List<Message>): String {
+        // LATEST MODEL: gemini-3.6-flash-exp (Better than 3.6-flash)
         val url = "https://generativelanguage.googleapis.com/v1beta/models/" +
-                "gemini-3.6-flash:generateContent?key=$geminiApiKey"
+                "gemini-3.6-flash-exp:generateContent?key=$geminiApiKey"
 
         val historyStr = recentMessages.takeLast(6).joinToString("\n") {
             "${it.sender}: ${it.message}"
@@ -116,7 +123,22 @@ TERA BEHAVIOR:
             ))
             put("generationConfig", JSONObject().apply {
                 put("temperature", 0.9)
-                put("maxOutputTokens", 300)
+                put("maxOutputTokens", 250)
+                put("topP", 0.95)
+                put("topK", 40)
+            })
+            put("safetySettings", JSONArray().apply {
+                listOf(
+                    "HARM_CATEGORY_HARASSMENT",
+                    "HARM_CATEGORY_HATE_SPEECH",
+                    "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                    "HARM_CATEGORY_DANGEROUS_CONTENT"
+                ).forEach { category ->
+                    put(JSONObject().apply {
+                        put("category", category)
+                        put("threshold", "BLOCK_ONLY_HIGH")
+                    })
+                }
             })
         }
 
@@ -129,9 +151,56 @@ TERA BEHAVIOR:
             val body = response.body?.string() ?: throw Exception("Empty response")
             
             if (!response.isSuccessful) {
-                throw Exception("HTTP ${response.code}: ${body.take(100)}")
+                // Try fallback to stable model
+                return callGeminiFallback(userMessage, recentMessages)
             }
             
+            val json = JSONObject(body)
+            
+            if (json.has("error")) {
+                throw Exception(json.getJSONObject("error").getString("message"))
+            }
+            
+            return json.getJSONArray("candidates")
+                .getJSONObject(0)
+                .getJSONObject("content")
+                .getJSONArray("parts")
+                .getJSONObject(0)
+                .getString("text")
+                .trim()
+        }
+    }
+    
+    private fun callGeminiFallback(userMessage: String, recentMessages: List<Message>): String {
+        // Fallback to stable gemini-3.6-flash
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/" +
+                "gemini-3.6-flash-flash:generateContent?key=$geminiApiKey"
+
+        val historyStr = recentMessages.takeLast(6).joinToString("\n") {
+            "${it.sender}: ${it.message}"
+        }
+
+        val fullPrompt = "$SYSTEM_PROMPT\n\nRECENT CHAT:\n$historyStr\n\nVikram: $userMessage\nLena:"
+
+        val requestJson = JSONObject().apply {
+            put("contents", JSONArray().put(
+                JSONObject().put("parts", JSONArray().put(
+                    JSONObject().put("text", fullPrompt)
+                ))
+            ))
+            put("generationConfig", JSONObject().apply {
+                put("temperature", 0.9)
+                put("maxOutputTokens", 250)
+            })
+        }
+
+        val request = Request.Builder()
+            .url(url)
+            .post(requestJson.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string() ?: throw Exception("Empty response")
             val json = JSONObject(body)
             
             if (json.has("error")) {
@@ -173,7 +242,7 @@ TERA BEHAVIOR:
             put("model", "gpt-4o-mini")
             put("messages", messagesArray)
             put("temperature", 0.9)
-            put("max_tokens", 300)
+            put("max_tokens", 250)
         }
 
         val request = Request.Builder()
