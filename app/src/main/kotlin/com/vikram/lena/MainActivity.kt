@@ -1,7 +1,6 @@
 package com.vikram.lena
 
 import android.Manifest
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -12,56 +11,132 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import com.vikram.lena.core.LenaService
-import com.vikram.lena.data.ConversationManager
-import com.vikram.lena.ui.screens.ChatScreen
+import com.vikram.lena.data.PreferencesManager
 import com.vikram.lena.ui.screens.HomeScreen
+import com.vikram.lena.ui.screens.OnboardingScreen
 import com.vikram.lena.ui.screens.SettingsScreen
 import com.vikram.lena.ui.theme.LenaTheme
 
 class MainActivity : ComponentActivity() {
 
-    private lateinit var conversationManager: ConversationManager
-
+    private lateinit var preferencesManager: PreferencesManager
+    
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        if (permissions.values.all { it }) {
+        val recordAudioGranted = permissions[Manifest.permission.RECORD_AUDIO] == true
+        if (recordAudioGranted) {
             startLenaService()
             requestBatteryOptimization()
         } else {
-            Toast.makeText(this, "Sari permissions de do please! 🙏", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Mic permission chahiye yaar!", Toast.LENGTH_LONG).show()
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        conversationManager = ConversationManager(this)
-
+        preferencesManager = PreferencesManager(this)
+        
         setContent {
             LenaTheme {
-                LenaMainApp(
-                    conversationManager = conversationManager,
-                    onStart = { requestPermissionsAndStart() },
-                    onStop = { stopLenaService() },
-                    onExport = { exportCSV() },
-                    onShare = { shareCSV() },
-                    onDelete = { deleteCSV() },
-                    onSaveApiKeys = { gemini, openai -> saveApiKeys(gemini, openai) },
-                    getSavedKeys = { getSavedApiKeys() }
-                )
+                LenaApp()
             }
         }
     }
-
+    
+    @Composable
+    fun LenaApp() {
+        var currentScreen by remember { 
+            mutableStateOf(
+                if (preferencesManager.isOnboardingComplete) "home" else "onboarding"
+            ) 
+        }
+        
+        var isServiceRunning by remember { mutableStateOf(LenaService.isRunning) }
+        var isListening by remember { mutableStateOf(false) }
+        var isSpeaking by remember { mutableStateOf(false) }
+        var volume by remember { mutableStateOf(0f) }
+        var statusText by remember { mutableStateOf("Tap orb to talk 🤖") }
+        var hasApiKey by remember { mutableStateOf(preferencesManager.hasApiKey()) }
+        
+        // Register service callbacks
+        DisposableEffect(Unit) {
+            LenaService.onStatusChanged = { status ->
+                statusText = status
+                isListening = status.contains("🎤") || status.contains("Sun rahi")
+                isSpeaking = status.contains("🗣️") || status.contains("bol rahi")
+            }
+            LenaService.onVolumeChanged = { vol ->
+                volume = vol
+            }
+            
+            onDispose {
+                LenaService.onStatusChanged = null
+                LenaService.onVolumeChanged = null
+            }
+        }
+        
+        // Check service status periodically
+        LaunchedEffect(Unit) {
+            while (true) {
+                isServiceRunning = LenaService.isRunning
+                hasApiKey = preferencesManager.hasApiKey()
+                kotlinx.coroutines.delay(1000)
+            }
+        }
+        
+        when (currentScreen) {
+            "onboarding" -> OnboardingScreen(
+                onComplete = { gemini, openai ->
+                    preferencesManager.geminiApiKey = gemini
+                    preferencesManager.openaiApiKey = openai
+                    preferencesManager.isOnboardingComplete = true
+                    hasApiKey = preferencesManager.hasApiKey()
+                    currentScreen = "home"
+                    Toast.makeText(this@MainActivity, "Setup complete! 🎉", Toast.LENGTH_SHORT).show()
+                },
+                onSkip = {
+                    preferencesManager.isOnboardingComplete = true
+                    currentScreen = "home"
+                    Toast.makeText(this@MainActivity, "You can add API keys later in Settings", Toast.LENGTH_LONG).show()
+                }
+            )
+            
+            "home" -> HomeScreen(
+                isListening = isListening,
+                isSpeaking = isSpeaking,
+                volume = volume,
+                statusText = statusText,
+                hasApiKey = hasApiKey,
+                isServiceRunning = isServiceRunning,
+                onOrbClick = {
+                    if (isServiceRunning) {
+                        triggerListening()
+                    } else {
+                        requestPermissionsAndStart()
+                    }
+                },
+                onStartService = { requestPermissionsAndStart() },
+                onStopService = { stopLenaService() },
+                onNavigateToSettings = { currentScreen = "settings" }
+            )
+            
+            "settings" -> SettingsScreen(
+                initialGeminiKey = preferencesManager.geminiApiKey,
+                initialOpenaiKey = preferencesManager.openaiApiKey,
+                onSaveKeys = { gemini, openai ->
+                    preferencesManager.geminiApiKey = gemini
+                    preferencesManager.openaiApiKey = openai
+                    hasApiKey = preferencesManager.hasApiKey()
+                    Toast.makeText(this@MainActivity, "Keys saved! ✅", Toast.LENGTH_SHORT).show()
+                },
+                onBack = { currentScreen = "home" }
+            )
+        }
+    }
+    
     private fun requestPermissionsAndStart() {
         val permissions = mutableListOf(
             Manifest.permission.RECORD_AUDIO,
@@ -83,7 +158,7 @@ class MainActivity : ComponentActivity() {
         }
         permissionLauncher.launch(permissions.toTypedArray())
     }
-
+    
     private fun startLenaService() {
         val intent = Intent(this, LenaService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -91,14 +166,25 @@ class MainActivity : ComponentActivity() {
         } else {
             startService(intent)
         }
-        Toast.makeText(this, "Lena activated! 🎉🤖", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Lena activated! 🚀", Toast.LENGTH_SHORT).show()
     }
-
+    
     private fun stopLenaService() {
         stopService(Intent(this, LenaService::class.java))
-        Toast.makeText(this, "Lena deactivated 😴", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Lena stopped 😴", Toast.LENGTH_SHORT).show()
     }
-
+    
+    private fun triggerListening() {
+        val intent = Intent(this, LenaService::class.java).apply {
+            action = LenaService.ACTION_START_LISTENING
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+    }
+    
     private fun requestBatteryOptimization() {
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         if (!pm.isIgnoringBatteryOptimizations(packageName)) {
@@ -106,119 +192,6 @@ class MainActivity : ComponentActivity() {
                 Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                 Uri.parse("package:$packageName")
             ))
-        }
-    }
-
-    private fun exportCSV() {
-        val (success, path) = conversationManager.exportToDownloads()
-        Toast.makeText(
-            this,
-            if (success) "CSV exported to Downloads/Lena/ 📥" else "Export failed: $path",
-            Toast.LENGTH_LONG
-        ).show()
-    }
-
-    private fun shareCSV() {
-        conversationManager.shareCSV()
-    }
-
-    private fun deleteCSV() {
-        conversationManager.deleteAllConversations()
-        Toast.makeText(this, "All conversations deleted! 🗑️", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun saveApiKeys(gemini: String, openai: String) {
-        getSharedPreferences("lena_prefs", Context.MODE_PRIVATE).edit()
-            .putString("gemini_key", gemini)
-            .putString("openai_key", openai)
-            .apply()
-
-        LenaService.GEMINI_API_KEY = gemini
-        LenaService.OPENAI_API_KEY = openai
-        Toast.makeText(this, "API Keys saved! ✅", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun getSavedApiKeys(): Pair<String, String> {
-        val prefs = getSharedPreferences("lena_prefs", Context.MODE_PRIVATE)
-        return Pair(
-            prefs.getString("gemini_key", "") ?: "",
-            prefs.getString("openai_key", "") ?: ""
-        )
-    }
-}
-
-@Composable
-fun LenaMainApp(
-    conversationManager: ConversationManager,
-    onStart: () -> Unit,
-    onStop: () -> Unit,
-    onExport: () -> Unit,
-    onShare: () -> Unit,
-    onDelete: () -> Unit,
-    onSaveApiKeys: (String, String) -> Unit,
-    getSavedKeys: () -> Pair<String, String>
-) {
-    var currentScreen by remember { mutableStateOf("home") }
-    var isServiceRunning by remember { mutableStateOf(false) }
-    var messages by remember { mutableStateOf(conversationManager.getAllMessages()) }
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            kotlinx.coroutines.delay(2000)
-            messages = conversationManager.getAllMessages()
-        }
-    }
-
-    Scaffold(
-        bottomBar = {
-            NavigationBar(containerColor = Color(0xFF1A1A2E)) {
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Home, "Home") },
-                    label = { Text("Home") },
-                    selected = currentScreen == "home",
-                    onClick = { currentScreen = "home" }
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Chat, "Chat") },
-                    label = { Text("Chat") },
-                    selected = currentScreen == "chat",
-                    onClick = { currentScreen = "chat" }
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Settings, "Settings") },
-                    label = { Text("Settings") },
-                    selected = currentScreen == "settings",
-                    onClick = { currentScreen = "settings" }
-                )
-            }
-        }
-    ) { padding ->
-        Box(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .background(Color(0xFF0F0F23))
-        ) {
-            when (currentScreen) {
-                "home" -> HomeScreen(
-                    isRunning = isServiceRunning,
-                    messageCount = messages.size,
-                    fileSize = conversationManager.getFileSize(),
-                    dailySummary = conversationManager.getDailySummary(),
-                    onToggle = {
-                        if (isServiceRunning) onStop() else onStart()
-                        isServiceRunning = !isServiceRunning
-                    },
-                    onExport = onExport,
-                    onShare = onShare,
-                    onDelete = onDelete
-                )
-                "chat" -> ChatScreen(messages = messages)
-                "settings" -> SettingsScreen(
-                    getSavedKeys = getSavedKeys,
-                    onSaveKeys = onSaveApiKeys
-                )
-            }
         }
     }
 }

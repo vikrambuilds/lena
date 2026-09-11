@@ -7,7 +7,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,23 +18,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vikram.lena.ui.components.GlassCard
 import com.vikram.lena.ui.theme.*
 
 @Composable
-fun SettingsScreen(
-    initialGeminiKey: String,
-    initialOpenaiKey: String,
-    onSaveKeys: (String, String) -> Unit,
-    onBack: () -> Unit
+fun OnboardingScreen(
+    onComplete: (geminiKey: String, openaiKey: String) -> Unit,
+    onSkip: () -> Unit
 ) {
-    var geminiKey by remember { mutableStateOf(initialGeminiKey) }
-    var openaiKey by remember { mutableStateOf(initialOpenaiKey) }
+    var geminiKey by remember { mutableStateOf("") }
+    var openaiKey by remember { mutableStateOf("") }
     var showGemini by remember { mutableStateOf(false) }
     var showOpenai by remember { mutableStateOf(false) }
-    var showSaved by remember { mutableStateOf(false) }
     
     Box(
         modifier = Modifier
@@ -43,43 +42,54 @@ fun SettingsScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp)
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Top Bar
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
-                }
-                Text(
-                    "⚙️ Settings",
-                    color = Color.White,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(start = 8.dp)
-                )
-            }
+            Spacer(modifier = Modifier.height(40.dp))
             
-            // API Keys Section
+            // Logo
+            Text("🤖", fontSize = 80.sp)
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Text(
+                "Welcome to Lena!",
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+            
+            Text(
+                "Your AI Best Friend",
+                fontSize = 16.sp,
+                color = TextSecondary,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            
+            Spacer(modifier = Modifier.height(40.dp))
+            
+            // Setup Card
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     Text(
-                        "🔑 API Keys",
-                        color = Color.White,
+                        "🔑 Setup API Keys",
                         fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
                     )
                     
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    // Gemini
                     Text(
-                        "Gemini API Key",
-                        color = ElectricBlue,
+                        "Lena ko baat karne ke liye AI key chahiye. Gemini FREE hai!",
                         fontSize = 14.sp,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 16.dp)
+                    )
+                    
+                    // Gemini Key
+                    Text(
+                        "🔵 Gemini API Key (FREE - Recommended)",
+                        fontSize = 14.sp,
+                        color = ElectricBlue,
                         fontWeight = FontWeight.Medium
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -98,6 +108,7 @@ fun SettingsScreen(
                         ),
                         visualTransformation = if (showGemini) VisualTransformation.None 
                                               else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         trailingIcon = {
                             IconButton(onClick = { showGemini = !showGemini }) {
                                 Icon(
@@ -112,11 +123,11 @@ fun SettingsScreen(
                     
                     Spacer(modifier = Modifier.height(16.dp))
                     
-                    // OpenAI
+                    // OpenAI Key
                     Text(
-                        "OpenAI API Key",
-                        color = NeonGreen,
+                        "🟢 OpenAI Key (Optional, Paid)",
                         fontSize = 14.sp,
+                        color = NeonGreen,
                         fontWeight = FontWeight.Medium
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -135,6 +146,7 @@ fun SettingsScreen(
                         ),
                         visualTransformation = if (showOpenai) VisualTransformation.None 
                                               else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         trailingIcon = {
                             IconButton(onClick = { showOpenai = !showOpenai }) {
                                 Icon(
@@ -146,33 +158,6 @@ fun SettingsScreen(
                             }
                         }
                     )
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    Button(
-                        onClick = {
-                            onSaveKeys(geminiKey, openaiKey)
-                            showSaved = true
-                        },
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = NeonPurple),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("💾 Save Keys", fontWeight = FontWeight.Bold)
-                    }
-                    
-                    if (showSaved) {
-                        LaunchedEffect(Unit) {
-                            kotlinx.coroutines.delay(2000)
-                            showSaved = false
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "✅ Keys saved successfully!",
-                            color = SuccessGreen,
-                            fontSize = 14.sp
-                        )
-                    }
                 }
             }
             
@@ -182,52 +167,53 @@ fun SettingsScreen(
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     Text(
-                        "📖 How to Get API Keys?",
-                        color = Color.White,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
+                        "💡 Gemini Key Kaise Le?",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    
-                    Text("🔵 Gemini (FREE):", color = ElectricBlue, fontWeight = FontWeight.Bold)
                     Text(
-                        "→ aistudio.google.com/apikey",
+                        "1. Chrome mein jao: aistudio.google.com/apikey\n" +
+                        "2. Google se login karo\n" +
+                        "3. 'Create API Key' click karo\n" +
+                        "4. Key copy karke yahan paste karo!",
                         color = TextSecondary,
-                        fontSize = 13.sp
-                    )
-                    
-                    Spacer(modifier = Modifier.height(12.dp))
-                    
-                    Text("🟢 OpenAI (Paid):", color = NeonGreen, fontWeight = FontWeight.Bold)
-                    Text(
-                        "→ platform.openai.com/api-keys",
-                        color = TextSecondary,
-                        fontSize = 13.sp
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(top = 8.dp)
                     )
                 }
             }
             
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(24.dp))
             
-            // About
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    Text(
-                        "ℹ️ About Lena",
-                        color = Color.White,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Version: 2.1", color = TextSecondary)
-                    Text("Developer: Vikram Kumar", color = TextSecondary)
-                    Text("B.Tech CSE, 5th Semester", color = TextSecondary)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "Made with ❤️",
-                        color = HotPink
-                    )
-                }
+            // Buttons
+            Button(
+                onClick = { onComplete(geminiKey, openaiKey) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                enabled = geminiKey.isNotBlank() || openaiKey.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = NeonPurple,
+                    disabledContainerColor = Color.White.copy(alpha = 0.1f)
+                ),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Text(
+                    "Save & Continue 🚀",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            TextButton(onClick = onSkip) {
+                Text(
+                    "Skip for now (Only offline features)",
+                    color = TextTertiary,
+                    fontSize = 14.sp
+                )
             }
             
             Spacer(modifier = Modifier.height(24.dp))

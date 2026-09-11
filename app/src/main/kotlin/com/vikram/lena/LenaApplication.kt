@@ -4,12 +4,8 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
-import com.vikram.lena.data.PreferencesManager
 
 class LenaApplication : Application() {
-
-    lateinit var preferencesManager: PreferencesManager
-        private set
 
     companion object {
         lateinit var instance: LenaApplication
@@ -19,7 +15,6 @@ class LenaApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        preferencesManager = PreferencesManager(this)
         createNotificationChannels()
     }
 
@@ -33,32 +28,21 @@ class LenaApplication : Application() {
                 "Lena Background Service",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Lena is always listening for your voice"
+                description = "Lena is always ready to help"
                 setShowBadge(false)
-                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
             manager.createNotificationChannel(serviceChannel)
 
-            // Alert channel (for reminders, greetings)
+            // Alert channel (for reminders)
             val alertChannel = NotificationChannel(
                 "LenaAlertChannel",
                 "Lena Alerts & Reminders",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Important alerts from Lena"
+                description = "Important reminders from Lena"
                 enableVibration(true)
             }
             manager.createNotificationChannel(alertChannel)
-
-            // Chat channel
-            val chatChannel = NotificationChannel(
-                "LenaChatChannel",
-                "Lena Chat Responses",
-                NotificationManager.IMPORTANCE_DEFAULT
-            ).apply {
-                description = "Lena's chat responses"
-            }
-            manager.createNotificationChannel(chatChannel)
         }
     }
 }

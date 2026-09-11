@@ -7,318 +7,203 @@ import android.os.*
 import androidx.core.app.NotificationCompat
 import com.vikram.lena.MainActivity
 import com.vikram.lena.ai.AIManager
-import com.vikram.lena.ai.TaskClassifier
-import com.vikram.lena.ai.TaskType
-import com.vikram.lena.automation.*
+import com.vikram.lena.ai.TaskExecutor
 import com.vikram.lena.data.ConversationManager
-import com.vikram.lena.voice.SpeechToTextManager
-import com.vikram.lena.voice.TextToSpeechManager
-import com.vikram.lena.voice.WakeWordManager
+import com.vikram.lena.data.PreferencesManager
+import com.vikram.lena.voice.VoiceManager
 import kotlinx.coroutines.*
-import java.text.SimpleDateFormat
-import java.util.*
 
 class LenaService : Service() {
 
-    // Managers
-    private lateinit var wakeWordManager: WakeWordManager
-    private lateinit var ttsManager: TextToSpeechManager
+    private lateinit var voiceManager: VoiceManager
     private lateinit var aiManager: AIManager
+    private lateinit var taskExecutor: TaskExecutor
     private lateinit var conversationManager: ConversationManager
-    private lateinit var taskClassifier: TaskClassifier
-    
-    // Automation Managers
-    private lateinit var phoneCallManager: PhoneCallManager
-    private lateinit var appLauncher: AppLauncher
-    private lateinit var systemController: SystemController
-    private lateinit var smsManager: SMSManager
-    private lateinit var whatsAppManager: WhatsAppManager
-    
+    private lateinit var preferencesManager: PreferencesManager
     private lateinit var wakeLock: PowerManager.WakeLock
-    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     
-    private var sttManager: SpeechToTextManager? = null
-    private var lastGreetingHour = -1
-
+    private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    
     companion object {
         const val CHANNEL_ID = "LenaServiceChannel"
         const val NOTIFICATION_ID = 1
-
-        // API Keys (Settings se bhi set kar sakte ho)
-        var GEMINI_API_KEY = ""
-        var OPENAI_API_KEY = ""
+        
+        const val ACTION_START_LISTENING = "com.vikram.lena.START_LISTENING"
+        const val ACTION_STOP_LISTENING = "com.vikram.lena.STOP_LISTENING"
+        const val ACTION_STOP_SERVICE = "com.vikram.lena.STOP_SERVICE"
+        
+        var isRunning = false
+            private set
+        
+        // Callbacks for UI to observe state
+        var onStatusChanged: ((String) -> Unit)? = null
+        var onVolumeChanged: ((Float) -> Unit)? = null
+        var onNewMessage: (() -> Unit)? = null
     }
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-
-        // Load API keys from preferences
-        val prefs = getSharedPreferences("lena_prefs", Context.MODE_PRIVATE)
-        GEMINI_API_KEY = prefs.getString("gemini_key", "") ?: ""
-        OPENAI_API_KEY = prefs.getString("openai_key", "") ?: ""
-
-        // Initialize all managers
+        
+        preferencesManager = PreferencesManager(this)
         conversationManager = ConversationManager(this)
-        aiManager = AIManager(GEMINI_API_KEY, OPENAI_API_KEY)
-        ttsManager = TextToSpeechManager(this)
-        taskClassifier = TaskClassifier()
-
-        // Automation
-        phoneCallManager = PhoneCallManager(this)
-        appLauncher = AppLauncher(this)
-        systemController = SystemController(this)
-        smsManager = SMSManager(this)
-        whatsAppManager = WhatsAppManager(this)
-
-        // WakeLock
+        aiManager = AIManager(preferencesManager.geminiApiKey, preferencesManager.openaiApiKey)
+        taskExecutor = TaskExecutor(this)
+        voiceManager = VoiceManager(this)
+        
+        setupVoiceCallbacks()
+        
+        // WakeLock for background operation
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
             "Lena::WakeLock"
         )
-        wakeLock.acquire()
+        wakeLock.acquire(10 * 60 * 1000L) // 10 minutes
+        
+        isRunning = true
+    }
 
-        // Wake Word Manager (FREE!)
-        wakeWordManager = WakeWordManager(
-            context = this,
-            onWakeWordDetected = { onLenaWakeUp() },
-            onStatusUpdate = { status -> updateNotification(status) }
-        )
-
-        // Proactive greeting
-        sendProactiveGreeting()
+    private fun setupVoiceCallbacks() {
+        voiceManager.onSpeechResult = { text ->
+            handleUserMessage(text)
+        }
+        
+        voiceManager.onSpeechError = { error ->
+            updateStatus("❌ $error")
+            voiceManager.speak(error)
+        }
+        
+        voiceManager.onListeningStart = {
+            updateStatus("🎤 Sun rahi hu...")
+        }
+        
+        voiceManager.onListeningEnd = {
+            updateStatus("💭 Process kar rahi hu...")
+        }
+        
+        voiceManager.onVolumeChanged = { volume ->
+            onVolumeChanged?.invoke(volume)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIFICATION_ID, createNotification("🎧 Lena sun rahi hai..."))
+        startForeground(NOTIFICATION_ID, createNotification("Ready to help! 🤖"))
         
-        // Start wake word detection
-        wakeWordManager.startHybridDetection()
+        when (intent?.action) {
+            ACTION_START_LISTENING -> startListening()
+            ACTION_STOP_LISTENING -> stopListening()
+            ACTION_STOP_SERVICE -> stopSelf()
+        }
         
         return START_STICKY
     }
 
-    /** Jab "Lena" detect ho */
-    private fun onLenaWakeUp() {
-        updateNotification("🎤 Bolo Vikram, Lena sun rahi hai...")
+    fun startListening() {
+        // Refresh API keys in case they changed
+        aiManager.updateKeys(preferencesManager.geminiApiKey, preferencesManager.openaiApiKey)
+        
+        // Vibrate to give feedback
+        vibrate()
+        
+        voiceManager.startListening()
+    }
 
-        // Vibrate to indicate listening
+    fun stopListening() {
+        voiceManager.stopListening()
+        voiceManager.stopSpeaking()
+        updateStatus("Ready to help! 🤖")
+    }
+
+    private fun handleUserMessage(userMessage: String) {
+        updateStatus("💭 \"$userMessage\"")
+        
+        // Save user message
+        conversationManager.saveMessage("Vikram", userMessage)
+        onNewMessage?.invoke()
+        
+        serviceScope.launch {
+            try {
+                // Step 1: Try offline task executor first
+                val taskResult = withContext(Dispatchers.IO) {
+                    taskExecutor.execute(userMessage)
+                }
+                
+                val finalResponse: String
+                val model: String
+                
+                if (taskResult.handled) {
+                    // Offline task executed successfully
+                    finalResponse = taskResult.response
+                    model = "Offline"
+                    updateStatus("✅ Task done!")
+                } else {
+                    // Need AI to respond
+                    if (!aiManager.hasValidKey()) {
+                        finalResponse = "Yaar, pehle Settings mein Gemini API key set karo! Free hai — aistudio.google.com se le le."
+                        model = "NoKey"
+                    } else {
+                        updateStatus("🧠 AI se puchh rahi hu...")
+                        val recentMessages = conversationManager.getRecentMessages(6)
+                        val (aiResponse, aiModel) = aiManager.getResponse(userMessage, recentMessages)
+                        finalResponse = aiResponse
+                        model = aiModel
+                    }
+                }
+                
+                // Save Lena's response
+                conversationManager.saveMessage("Lena", finalResponse, model)
+                onNewMessage?.invoke()
+                
+                // Speak the response
+                updateStatus("🗣️ Bol rahi hu...")
+                voiceManager.speak(finalResponse) {
+                    updateStatus("Ready to help! 🤖")
+                }
+                
+            } catch (e: Exception) {
+                val errorMsg = "Arre yaar, kuch gadbad ho gayi: ${e.message?.take(50)}"
+                conversationManager.saveMessage("Lena", errorMsg, "Error")
+                onNewMessage?.invoke()
+                voiceManager.speak(errorMsg) {
+                    updateStatus("Ready to help! 🤖")
+                }
+            }
+        }
+    }
+
+    private fun updateStatus(status: String) {
+        val notification = getSystemService(NotificationManager::class.java)
+        notification.notify(NOTIFICATION_ID, createNotification(status))
+        onStatusChanged?.invoke(status)
+    }
+
+    private fun vibrate() {
         val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val vibratorManager = getSystemService(
-                Context.VIBRATOR_MANAGER_SERVICE
-            ) as VibratorManager
-            vibratorManager.defaultVibrator
+            val manager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+            manager.defaultVibrator
         } else {
             @Suppress("DEPRECATION")
             getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
         }
-        vibrator.vibrate(VibrationEffect.createOneShot(200, VibrationEffect.DEFAULT_AMPLITUDE))
-
-        // Start listening
-        sttManager = SpeechToTextManager(
-            context = this,
-            onResult = { userMessage -> processUserMessage(userMessage) },
-            onError = { error ->
-                ttsManager.speak("Samjh nahi aaya yaar, dobara bol!") {
-                    restartWakeWord()
-                }
-            }
-        )
-        sttManager?.startListening()
-    }
-
-    /** Main processing pipeline */
-    private fun processUserMessage(userMessage: String) {
-        updateNotification("💭 Lena soch rahi hai...")
-
-        val startTime = System.currentTimeMillis()
-
-        // 1. Classify the task
-        val parsedTask = taskClassifier.classify(userMessage)
-
-        serviceScope.launch {
-            try {
-                var taskResult: String? = null
-                var responseText: String
-                var modelUsed = ""
-
-                // 2. Execute task if needed
-                if (parsedTask.type != TaskType.CONVERSATION) {
-                    taskResult = executeTask(parsedTask)
-                }
-
-                // 3. Get AI response (with task context)
-                val recentMessages = conversationManager.getRecentMessages(10)
-                
-                if (parsedTask.type == TaskType.CONVERSATION || taskResult != null) {
-                    val (aiResponse, model) = aiManager.getResponse(
-                        userMessage, recentMessages, taskResult
-                    )
-                    responseText = aiResponse
-                    modelUsed = model
-                } else {
-                    responseText = taskResult ?: "Ho gaya yaar! ✅"
-                    modelUsed = "Local"
-                }
-
-                val responseTime = System.currentTimeMillis() - startTime
-
-                // 4. Save to CSV
-                conversationManager.saveMessage(
-                    sender = "Vikram",
-                    message = userMessage,
-                    taskType = parsedTask.type.name
-                )
-                conversationManager.saveMessage(
-                    sender = "Lena",
-                    message = responseText,
-                    aiModel = modelUsed,
-                    taskType = parsedTask.type.name,
-                    responseTime = responseTime
-                )
-
-                // 5. Speak response
-                withContext(Dispatchers.Main) {
-                    updateNotification("🗣️ Lena bol rahi hai...")
-                    ttsManager.speak(responseText) {
-                        restartWakeWord()
-                    }
-                }
-
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    val errorMsg = "Arre yaar, kuch gadbad ho gayi. " +
-                        "Dobara try kar! 😅"
-                    conversationManager.saveMessage("Lena", errorMsg, "Error")
-                    ttsManager.speak(errorMsg) {
-                        restartWakeWord()
-                    }
-                }
-            }
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(100)
         }
     }
-
-    /** Execute phone tasks */
-    private fun executeTask(task: com.vikram.lena.ai.ParsedTask): String {
-        return when (task.type) {
-            TaskType.MAKE_CALL -> {
-                val contact = task.params["contact"] ?: ""
-                phoneCallManager.makeCall(contact)
-            }
-            TaskType.ANSWER_CALL -> phoneCallManager.answerCall()
-            TaskType.REJECT_CALL -> phoneCallManager.rejectCall()
-            
-            TaskType.OPEN_APP -> {
-                val appName = task.params["appName"] ?: ""
-                appLauncher.openApp(appName)
-            }
-            
-            TaskType.SEND_SMS -> {
-                val contact = task.params["contact"] ?: ""
-                val message = task.params["message"] ?: ""
-                smsManager.sendSMS(contact, message)
-            }
-            TaskType.READ_SMS -> smsManager.readRecentSMS()
-            
-            TaskType.SEND_WHATSAPP -> {
-                val contact = task.params["contact"] ?: ""
-                val message = task.params["message"] ?: ""
-                whatsAppManager.sendWhatsAppMessage(contact, message)
-            }
-            
-            TaskType.WIFI_TOGGLE -> {
-                val turnOn = task.params["action"] == "on"
-                systemController.toggleWifi(turnOn)
-            }
-            TaskType.BLUETOOTH_TOGGLE -> {
-                val turnOn = task.params["action"] == "on"
-                systemController.toggleBluetooth(turnOn)
-            }
-            TaskType.FLASHLIGHT_TOGGLE -> {
-                val turnOn = task.params["action"] == "on"
-                systemController.toggleFlashlight(turnOn)
-            }
-            
-            TaskType.VOLUME_CONTROL -> {
-                val action = task.params["action"] ?: "up"
-                systemController.controlVolume(action)
-            }
-            TaskType.BRIGHTNESS_CONTROL -> {
-                val action = task.params["action"] ?: "up"
-                systemController.controlBrightness(action)
-            }
-            
-            TaskType.PLAY_MUSIC -> systemController.controlMedia("play")
-            TaskType.PAUSE_MUSIC -> systemController.controlMedia("pause")
-            TaskType.NEXT_TRACK -> systemController.controlMedia("next")
-            
-            TaskType.SET_ALARM -> {
-                val hour = task.params["hour"]?.toIntOrNull() ?: 7
-                val minute = task.params["minute"]?.toIntOrNull() ?: 0
-                systemController.setAlarm(hour, minute)
-            }
-            
-            TaskType.BATTERY_STATUS -> systemController.getBatteryStatus()
-            TaskType.TIME_DATE -> systemController.getTimeDate()
-            
-            TaskType.SEARCH_CONTACT -> {
-                val name = task.params["name"] ?: ""
-                phoneCallManager.searchContact(name)
-            }
-            
-            else -> "Ye task abhi nahi kar sakti yaar!"
-        }
-    }
-
-    /** Proactive greeting based on time */
-    private fun sendProactiveGreeting() {
-        serviceScope.launch {
-            while (true) {
-                delay(60000) // Check every minute
-                val calendar = Calendar.getInstance()
-                val hour = calendar.get(Calendar.HOUR_OF_DAY)
-                
-                if (hour != lastGreetingHour) {
-                    val greeting = when (hour) {
-                        7 -> "Good morning Vikram! ☀️ Uth gaya? Aaj ka din mast hone wala hai!"
-                        13 -> "Vikram yaar, lunch kar liya? Break le le thoda! 🍕"
-                        18 -> "Good evening yaar! Aaj ki padhai kaisi rahi? 📚"
-                        22 -> "Vikram, raat ho gayi. Jaldi so ja yaar, health important hai! 😴"
-                        else -> null
-                    }
-                    
-                    if (greeting != null) {
-                        lastGreetingHour = hour
-                        conversationManager.saveMessage(
-                            "Lena", greeting, "Proactive", "GREETING"
-                        )
-                        withContext(Dispatchers.Main) {
-                            ttsManager.speak(greeting)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private fun restartWakeWord() {
-        updateNotification("🎧 Lena sun rahi hai...")
-        wakeWordManager.startHybridDetection()
-    }
-
-    // ========== NOTIFICATION ==========
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Lena AI Service",
+                "Lena Background Service",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Lena is always ready to help!"
+                description = "Lena AI is ready to help"
                 setShowBadge(false)
-                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
@@ -326,9 +211,18 @@ class LenaService : Service() {
     }
 
     private fun createNotification(status: String): Notification {
-        val intent = Intent(this, MainActivity::class.java)
+        val openIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
-            this, 0, intent, PendingIntent.FLAG_IMMUTABLE
+            this, 0, openIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        
+        val listenIntent = Intent(this, LenaService::class.java).apply {
+            action = ACTION_START_LISTENING
+        }
+        val listenPendingIntent = PendingIntent.getService(
+            this, 1, listenIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
@@ -336,22 +230,16 @@ class LenaService : Service() {
             .setContentText(status)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(pendingIntent)
+            .addAction(android.R.drawable.ic_btn_speak_now, "🎤 Listen", listenPendingIntent)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
-    }
-
-    private fun updateNotification(status: String) {
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.notify(NOTIFICATION_ID, createNotification(status))
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        wakeWordManager.stopListening()
-        ttsManager.shutdown()
-        sttManager?.stopListening()
+        isRunning = false
+        voiceManager.destroy()
         if (wakeLock.isHeld) wakeLock.release()
         serviceScope.cancel()
     }

@@ -1,35 +1,68 @@
 package com.vikram.lena.ui.theme
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
-// Colors
-val LenaPrimary = Color(0xFF7C4DFF)
-val LenaSecondary = Color(0xFF00E5FF)
-val LenaTertiary = Color(0xFFFF6B6B)
-val LenaBackground = Color(0xFF0F0F23)
-val LenaSurface = Color(0xFF1A1A2E)
-val LenaCardBg = Color(0xFF2A2A3E)
-val LenaOnSurface = Color.White
-val LenaSuccess = Color(0xFF4CAF50)
-val LenaError = Color(0xFFF44336)
-val LenaWarning = Color(0xFFFF9800)
+// Modern Vibrant Colors
+val NeonPurple = Color(0xFFB388FF)
+val ElectricBlue = Color(0xFF00E5FF)
+val HotPink = Color(0xFFFF4081)
+val NeonGreen = Color(0xFF00E676)
+val SunsetOrange = Color(0xFFFF6E40)
+
+// Dark theme backgrounds
+val DeepDark = Color(0xFF0A0A1F)
+val MidDark = Color(0xFF1A1A2E)
+val CardDark = Color(0xFF16162A)
+val GlassDark = Color(0xFF2A2A4A)
+
+// Text colors
+val TextPrimary = Color(0xFFFFFFFF)
+val TextSecondary = Color(0xB3FFFFFF)
+val TextTertiary = Color(0x80FFFFFF)
+
+// Status colors
+val SuccessGreen = Color(0xFF00C853)
+val WarningYellow = Color(0xFFFFD600)
+val ErrorRed = Color(0xFFFF5252)
+
+// Gradient brushes
+object Gradients {
+    val PurpleBlue = Brush.linearGradient(
+        colors = listOf(NeonPurple, ElectricBlue)
+    )
+    val PinkOrange = Brush.linearGradient(
+        colors = listOf(HotPink, SunsetOrange)
+    )
+    val BackgroundGradient = Brush.verticalGradient(
+        colors = listOf(DeepDark, MidDark, CardDark)
+    )
+    val OrbGradient = Brush.radialGradient(
+        colors = listOf(
+            NeonPurple.copy(alpha = 0.8f),
+            ElectricBlue.copy(alpha = 0.4f),
+            Color.Transparent
+        )
+    )
+}
 
 private val DarkColorScheme = darkColorScheme(
-    primary = LenaPrimary,
+    primary = NeonPurple,
     onPrimary = Color.White,
-    secondary = LenaSecondary,
+    secondary = ElectricBlue,
     onSecondary = Color.Black,
-    tertiary = LenaTertiary,
-    background = LenaBackground,
-    onBackground = LenaOnSurface,
-    surface = LenaSurface,
-    onSurface = LenaOnSurface,
-    error = LenaError,
+    tertiary = HotPink,
+    background = DeepDark,
+    onBackground = TextPrimary,
+    surface = MidDark,
+    onSurface = TextPrimary,
+    error = ErrorRed,
     onError = Color.White,
-    surfaceVariant = LenaCardBg,
-    onSurfaceVariant = Color.White.copy(alpha = 0.7f)
+    surfaceVariant = CardDark,
+    onSurfaceVariant = TextSecondary
 )
 
 @Composable

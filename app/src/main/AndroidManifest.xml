@@ -62,7 +62,6 @@
         android:roundIcon="@drawable/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/Theme.Lena"
-        android:requestLegacyExternalStorage="true"
         tools:targetApi="34">
 
         <!-- Main Activity -->
@@ -83,30 +82,7 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
-        <!-- Accessibility Service -->
-        <service
-            android:name=".core.LenaAccessibilityService"
-            android:exported="true"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/accessibility_config" />
-        </service>
-
-        <!-- Notification Listener -->
-        <service
-            android:name=".core.NotificationListener"
-            android:exported="true"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
-            <intent-filter>
-                <action android:name="android.service.notification.NotificationListenerService" />
-            </intent-filter>
-        </service>
-
-        <!-- Boot Receiver -->
+        <!-- Boot Receiver (Auto-start on phone restart) -->
         <receiver
             android:name=".core.BootReceiver"
             android:enabled="true"
@@ -117,13 +93,13 @@
             </intent-filter>
         </receiver>
 
-        <!-- Reminder Receiver -->
+        <!-- Reminder Receiver (for alarm reminders) -->
         <receiver
             android:name=".automation.ReminderReceiver"
             android:enabled="true"
             android:exported="false" />
 
-        <!-- File Provider -->
+        <!-- File Provider (for CSV sharing) -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

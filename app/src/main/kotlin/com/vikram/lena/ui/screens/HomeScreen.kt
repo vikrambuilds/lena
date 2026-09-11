@@ -1,218 +1,314 @@
 package com.vikram.lena.ui.screens
 
+import androidx.compose.animation.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.vikram.lena.ui.components.StatusCard
-import com.vikram.lena.ui.components.WaveAnimation
+import com.vikram.lena.ui.components.GlassCard
+import com.vikram.lena.ui.components.VoiceOrb
+import com.vikram.lena.ui.theme.*
 
 @Composable
 fun HomeScreen(
-    isRunning: Boolean,
-    messageCount: Int,
-    fileSize: String,
-    dailySummary: String,
-    memoryCount: Int = 0,
-    onToggle: () -> Unit,
-    onExport: () -> Unit,
-    onShare: () -> Unit,
-    onDelete: () -> Unit
+    isListening: Boolean,
+    isSpeaking: Boolean,
+    volume: Float,
+    statusText: String,
+    hasApiKey: Boolean,
+    isServiceRunning: Boolean,
+    onOrbClick: () -> Unit,
+    onStartService: () -> Unit,
+    onStopService: () -> Unit,
+    onNavigateToSettings: () -> Unit
 ) {
-    var showDeleteDialog by remember { mutableStateOf(false) }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Gradients.BackgroundGradient)
     ) {
-        // Main Status Card
-        item {
-            StatusCard(
-                isRunning = isRunning,
-                onToggle = onToggle
-            )
-        }
-
-        // Wave Animation when running
-        if (isRunning) {
-            item {
-                WaveAnimation()
-            }
-        }
-
-        // Stats Row
-        item {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Top App Bar
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                StatMiniCard(Modifier.weight(1f), "💬", "$messageCount", "Messages")
-                StatMiniCard(Modifier.weight(1f), "📁", fileSize, "CSV Size")
-                StatMiniCard(Modifier.weight(1f), "🧠", "$memoryCount", "Memories")
-                StatMiniCard(Modifier.weight(1f), "🤖", "v2.0", "Version")
-            }
-        }
-
-        // Daily Summary
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A3E)),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column {
                     Text(
-                        "📊 Today's Summary",
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        fontSize = 16.sp
+                        "Hey Vikram 👋",
+                        color = TextSecondary,
+                        fontSize = 14.sp
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(dailySummary, color = Color.White.copy(alpha = 0.8f))
+                    Text(
+                        "Lena AI",
+                        color = Color.White,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                
+                // Status indicator
+                Box(
+                    modifier = Modifier
+                        .size(50.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isServiceRunning) SuccessGreen.copy(alpha = 0.2f)
+                            else Color.White.copy(alpha = 0.1f)
+                        )
+                        .clickable { onNavigateToSettings() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Settings,
+                        contentDescription = "Settings",
+                        tint = if (isServiceRunning) SuccessGreen else Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
                 }
             }
-        }
-
-        // Quick Actions
-        item {
-            Text(
-                "⚡ Quick Actions",
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                fontSize = 18.sp
-            )
-        }
-
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            
+            // API Key Warning
+            AnimatedVisibility(
+                visible = !hasApiKey,
+                enter = fadeIn() + slideInVertically(),
+                exit = fadeOut() + slideOutVertically()
             ) {
-                QuickActionCard(Modifier.weight(1f), "📥", "Export CSV") { onExport() }
-                QuickActionCard(Modifier.weight(1f), "📤", "Share CSV") { onShare() }
-                QuickActionCard(Modifier.weight(1f), "🗑️", "Delete All") {
-                    showDeleteDialog = true
-                }
-            }
-        }
-
-        // Voice Commands Guide
-        item {
-            Text(
-                "🎯 Voice Commands",
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                fontSize = 18.sp
-            )
-        }
-
-        val commandGroups = listOf(
-            Triple("📞", "Calls", "\"Mummy ko call karo\" | \"Call utha lo\""),
-            Triple("📱", "Apps", "\"YouTube khol do\" | \"WhatsApp open karo\""),
-            Triple("💬", "Messages", "\"Rahul ko SMS bhejo\" | \"WhatsApp message karo\""),
-            Triple("📶", "System", "\"WiFi on karo\" | \"Bluetooth off karo\""),
-            Triple("🔊", "Audio", "\"Volume badha do\" | \"Gaana chala do\""),
-            Triple("⏰", "Alarm", "\"7 baje alarm lagao\" | \"Yaad dila dena\""),
-            Triple("ℹ️", "Info", "\"Battery kitni hai?\" | \"Time kya hua?\""),
-            Triple("🔦", "Torch", "\"Torch jala do\" | \"Light band karo\""),
-            Triple("🗣️", "Chat", "\"Lena kaisi hai?\" | \"DSA samjha do\"")
-        )
-
-        commandGroups.forEach { (icon, title, example) ->
-            item {
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A3E)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    colors = CardDefaults.cardColors(containerColor = WarningYellow.copy(alpha = 0.2f)),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        modifier = Modifier.padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(icon, fontSize = 24.sp)
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("⚠️", fontSize = 20.sp)
+                        Spacer(modifier = Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(title, color = Color.White, fontWeight = FontWeight.Bold)
                             Text(
-                                example, fontSize = 12.sp,
-                                color = Color.White.copy(alpha = 0.5f)
+                                "API Key nahi hai!",
+                                color = WarningYellow,
+                                fontWeight = FontWeight.Bold
                             )
+                            Text(
+                                "Sirf offline commands kaam karenge",
+                                color = TextSecondary,
+                                fontSize = 12.sp
+                            )
+                        }
+                        TextButton(onClick = onNavigateToSettings) {
+                            Text("Add", color = WarningYellow)
                         }
                     }
                 }
             }
-        }
-
-        item { Spacer(modifier = Modifier.height(80.dp)) }
-    }
-
-    // Delete Dialog
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("🗑️ Sab Delete Karein?", color = Color.White) },
-            text = {
+            
+            Spacer(modifier = Modifier.height(40.dp))
+            
+            // Voice Orb (Main Center)
+            VoiceOrb(
+                isListening = isListening,
+                isSpeaking = isSpeaking,
+                volume = volume,
+                onClick = {
+                    if (isServiceRunning) {
+                        onOrbClick()
+                    } else {
+                        onStartService()
+                    }
+                }
+            )
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // Status Text
+            AnimatedContent(
+                targetState = statusText,
+                label = "status"
+            ) { status ->
                 Text(
-                    "Sari conversations permanently delete ho jayengi!\nYe action undo nahi hoga.",
-                    color = Color.White.copy(alpha = 0.7f)
+                    text = status,
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium
                 )
-            },
-            containerColor = Color(0xFF2A2A3E),
-            confirmButton = {
+            }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // Service Toggle Button
+            if (!isServiceRunning) {
                 Button(
-                    onClick = { onDelete(); showDeleteDialog = false },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
-                ) { Text("DELETE ALL") }
-            },
-            dismissButton = {
-                OutlinedButton(onClick = { showDeleteDialog = false }) {
-                    Text("Cancel", color = Color.White)
+                    onClick = onStartService,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonPurple),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Icon(Icons.Default.PlayArrow, null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "START LENA",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Button(
+                        onClick = onOrbClick,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = NeonPurple),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Icon(Icons.Default.Mic, null)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Talk", fontWeight = FontWeight.Bold)
+                    }
+                    
+                    Button(
+                        onClick = onStopService,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = ErrorRed),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Icon(Icons.Default.Stop, null)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Stop", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
-        )
+            
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            // Quick Commands
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "✨ Try these commands",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            val quickCommands = listOf(
+                Triple("📞", "Call", "\"Mummy ko call karo\""),
+                Triple("📱", "Apps", "\"YouTube khol do\""),
+                Triple("🔦", "Torch", "\"Torch jala do\""),
+                Triple("🔊", "Volume", "\"Volume badha do\""),
+                Triple("🔋", "Battery", "\"Battery kitni hai?\""),
+                Triple("⏰", "Time", "\"Kitne baje hain?\""),
+                Triple("💬", "WhatsApp", "\"WhatsApp khol do\""),
+                Triple("🎵", "Music", "\"Gaana chala do\"")
+            )
+            
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(quickCommands) { (icon, title, example) ->
+                    CommandCard(icon, title, example)
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // Info Cards
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("💡", fontSize = 24.sp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "How to use Lena?",
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "1. START LENA button dabao\n" +
+                        "2. Orb ya Talk button pe tap karo\n" +
+                        "3. Command bolo (Hindi/English)\n" +
+                        "4. Lena awaaz mein reply karegi!",
+                        color = TextSecondary,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+        }
     }
 }
 
 @Composable
-fun StatMiniCard(modifier: Modifier, icon: String, value: String, label: String) {
+fun CommandCard(icon: String, title: String, example: String) {
     Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A3E)),
-        shape = RoundedCornerShape(12.dp)
+        modifier = Modifier.width(140.dp),
+        colors = CardDefaults.cardColors(containerColor = CardDark),
+        shape = RoundedCornerShape(16.dp)
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(icon, fontSize = 20.sp)
-            Text(value, fontWeight = FontWeight.Bold, color = Color.White, fontSize = 14.sp)
-            Text(label, fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
-        }
-    }
-}
-
-@Composable
-fun QuickActionCard(modifier: Modifier, icon: String, label: String, onClick: () -> Unit) {
-    Card(
-        modifier = modifier.clickable { onClick() },
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF7C4DFF).copy(alpha = 0.3f)
-        ),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(icon, fontSize = 28.sp)
+            Text(icon, fontSize = 32.sp)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(label, color = Color.White, fontSize = 12.sp)
+            Text(
+                title,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
+            )
+            Text(
+                example,
+                color = TextTertiary,
+                fontSize = 10.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
         }
     }
 }
